@@ -1,0 +1,44 @@
+/* ─── Design Tokens ──────────────────────────────────────────────────────── */
+:root {
+  /* P1 Blue */
+  --p1-primary: #2563eb;
+  --p1-light:   #bfdbfe;
+  --p1-dark:    #1e40af;
+
+  /* P2 Orange */
+  --p2-primary: #ea580c;
+  --p2-light:   #fed7aa;
+  --p2-dark:    #9a3412;
+
+  /* Neutrals */
+  --bg:         #0f172a;
+  --surface:    #1e293b;
+  --border:     #334155;
+  --text:       #f1f5f9;
+  --text-muted: #94a3b8;
+
+  /* Highlight */
+  --highlight:  #fbbf24;
+
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}

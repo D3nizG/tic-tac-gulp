@@ -1,0 +1,23 @@
+my-project/
+  AGENTS.md
+  .claude/
+    agents/
+      orchestrator.md
+      planner.md
+      frontend.md
+      backend.md
+      reviewer.md
+    skills/
+      add-endpoint/
+        SKILL.md
+      ui-feature/
+        SKILL.md
+      websocket-change/
+        SKILL.md
+  docs/
+    architecture/
+      overview.md
+    decisions/
+    debugging/
+    contracts/
+    runbooks/

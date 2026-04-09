@@ -1,44 +1,88 @@
 /* ─── Design Tokens ──────────────────────────────────────────────────────── */
 :root {
+  /* Typography */
+  --font-display: 'Oxanium', system-ui, sans-serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+
   /* P1 Blue */
   --p1-primary: #2563eb;
   --p1-light:   #bfdbfe;
   --p1-dark:    #1e40af;
+  --p1-glow:    rgba(37, 99, 235, 0.4);
 
   /* P2 Orange */
   --p2-primary: #ea580c;
   --p2-light:   #fed7aa;
   --p2-dark:    #9a3412;
+  --p2-glow:    rgba(234, 88, 12, 0.4);
 
   /* Neutrals */
-  --bg:         #0f172a;
-  --surface:    #1e293b;
-  --border:     #334155;
-  --text:       #f1f5f9;
-  --text-muted: #94a3b8;
+  --bg:           #0a0f1e;
+  --bg-mid:       #0f172a;
+  --surface:      #141c33;
+  --surface-raised:#1a2340;
+  --border:       #1e2d4a;
+  --border-bright:#2a3d6a;
+  --text:         #e8edf8;
+  --text-muted:   #6b7fa3;
+  --text-dim:     #3a4a6a;
 
   /* Highlight */
-  --highlight:  #fbbf24;
+  --highlight:    #fbbf24;
+  --highlight-glow: rgba(251, 191, 36, 0.35);
 
-  font-family: Inter, system-ui, sans-serif;
+  /* Error */
+  --error:        #ef4444;
+
+  font-family: var(--font-body);
   font-size: 16px;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* ─── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+html, body, #root {
+  width: 100%;
+  min-height: 100%;
+}
+
 body {
-  min-height: 100vh;
   background: var(--bg);
+  overflow-x: hidden;
 }
 
 button {
   cursor: pointer;
   font-family: inherit;
+  border: none;
+  outline: none;
+}
+
+input {
+  font-family: inherit;
+  outline: none;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+/* ─── Utility classes ────────────────────────────────────────────────────── */
+.display-font { font-family: var(--font-display); }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-6px); }
+  40%       { transform: translateX(6px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
 }

@@ -8,11 +8,15 @@ interface GameStore {
   roomCode: string | null;
   sessionId: string | null;
 
-  // UI state
+  // UI / animation state
   selectedPieceSize: 1 | 2 | 3 | null;
   isConnected: boolean;
   isReconnecting: boolean;
   lastMoveError: string | null;
+  /** moveCount at the time the last piece was placed — used for drop animation */
+  lastPlacedMoveCount: number | null;
+  /** Which player just disconnected (for banner) */
+  disconnectedPlayer: PlayerId | null;
 
   // Actions
   setGameState: (state: GameState) => void;
@@ -21,6 +25,8 @@ interface GameStore {
   setReconnecting: (reconnecting: boolean) => void;
   selectPiece: (size: 1 | 2 | 3 | null) => void;
   setMoveError: (error: string | null) => void;
+  recordMove: (moveCount: number) => void;
+  setDisconnectedPlayer: (p: PlayerId | null) => void;
   reset: () => void;
 }
 
@@ -33,6 +39,8 @@ const initialState = {
   isConnected: false,
   isReconnecting: false,
   lastMoveError: null,
+  lastPlacedMoveCount: null,
+  disconnectedPlayer: null,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -51,6 +59,10 @@ export const useGameStore = create<GameStore>((set) => ({
     set({ selectedPieceSize, lastMoveError: null }),
 
   setMoveError: (lastMoveError) => set({ lastMoveError }),
+
+  recordMove: (moveCount) => set({ lastPlacedMoveCount: moveCount }),
+
+  setDisconnectedPlayer: (disconnectedPlayer) => set({ disconnectedPlayer }),
 
   reset: () => set(initialState),
 }));

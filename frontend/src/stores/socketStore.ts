@@ -42,6 +42,7 @@ function attachListeners(s: Socket) {
   });
 
   s.on('game:state', (data: { gameState: GameState }) => {
+    store().recordMove(data.gameState.moveCount - 1);
     store().setGameState(data.gameState);
     store().selectPiece(null);
   });
@@ -60,8 +61,8 @@ function attachListeners(s: Socket) {
     store().selectPiece(null);
   });
 
-  s.on('player:disconnected', () => {
-    // UI can read from gameState — this event just prompts a notification
+  s.on('player:disconnected', (data: { playerId: PlayerId; timeoutSeconds: number }) => {
+    store().setDisconnectedPlayer(data.playerId);
   });
 }
 

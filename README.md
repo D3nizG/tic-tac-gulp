@@ -71,20 +71,23 @@ npm test
 
 ### Backend
 
-| Variable          | Default                 | Description                                    |
-|-------------------|-------------------------|------------------------------------------------|
-| `PORT`            | `3001`                  | Set automatically by Railway                   |
-| `FRONTEND_ORIGIN` | `http://localhost:3000` | Comma-separated allowed CORS origins           |
-| `NODE_ENV`        | *(unset)*               | Set to `production` on Railway                 |
-| `REDIS_URL`       | *(unset)*               | Redis connection (Phase 4+)                    |
-| `DATABASE_URL`    | *(unset)*               | Postgres connection (Phase 5+)                 |
-| `JWT_SECRET`      | *(unset)*               | JWT signing secret (Phase 5+)                  |
+| Variable                   | Default                 | Description                                    |
+|----------------------------|-------------------------|------------------------------------------------|
+| `PORT`                     | `3001`                  | Set automatically by Railway                   |
+| `FRONTEND_ORIGIN`          | `http://localhost:3000` | Comma-separated allowed CORS origins           |
+| `NODE_ENV`                 | *(unset)*               | Set to `production` on Railway                 |
+| `REDIS_URL`                | *(unset)*               | Redis connection (Phase 5a+, Railway Redis)    |
+| `SUPABASE_URL`             | *(unset)*               | Supabase project URL (Phase 5b+)               |
+| `SUPABASE_SERVICE_ROLE_KEY`| *(unset)*               | Supabase admin key (Phase 5b+)                 |
+| `SUPABASE_JWT_SECRET`      | *(unset)*               | JWT secret for verifying Supabase tokens (Phase 6+) |
 
 ### Frontend
 
-| Variable          | Default | Description                                                    |
-|-------------------|---------|----------------------------------------------------------------|
-| `VITE_SOCKET_URL` | `''`    | Backend URL. Empty = Vite proxy (local). Set in Vercel for prod. |
+| Variable               | Default | Description                                                    |
+|------------------------|---------|----------------------------------------------------------------|
+| `VITE_SOCKET_URL`      | `''`    | Backend URL. Empty = Vite proxy (local). Set in Vercel for prod. |
+| `VITE_SUPABASE_URL`    | *(unset)* | Supabase project URL (Phase 5b+)                             |
+| `VITE_SUPABASE_ANON_KEY` | *(unset)* | Supabase public anon key (Phase 5b+)                       |
 
 ---
 
@@ -141,13 +144,13 @@ npm test
 
 See [`docs/roadmap.md`](docs/roadmap.md) for the full breakdown. In short:
 
-- User accounts, auth, persistent profiles
+- User accounts, auth, persistent profiles (Supabase Auth — Google OAuth + email/password)
 - Matchmaking (ranked/casual queue)
 - Social layer (friends, notifications)
 - AI opponent
 - Leaderboard and stats
 - Redis persistence (rooms survive backend restarts)
-- Database (users, match history, ratings)
+- Supabase Postgres (users, match history, ratings)
 
 ---
 

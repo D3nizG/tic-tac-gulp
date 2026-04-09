@@ -119,41 +119,62 @@ Two players on the same device. No server or socket needed — pure shared game 
 
 ---
 
-## Phase 5 — Persistence Layer (Redis + Postgres)
+## Phase 5 — Persistence Layer (Railway Redis + Supabase Postgres)
 
 Before adding user accounts, the infrastructure needs to be durable.
+
+**Architecture decision:** Supabase is used for Postgres + Auth instead of Railway Postgres + custom JWT.
+Redis is still required for Socket.IO ephemeral game state — Supabase does not replace it.
 
 ### 5a. Redis — Room and session persistence
 
 Currently rooms live in-memory on the backend Node.js process. A Railway restart wipes all active games.
 
 **Implementation:**
-- Add Railway Redis addon
-- Replace `Map` in `roomStore.ts` with Redis hash operations
-- Use Socket.IO Redis adapter (`@socket.io/redis-adapter`) for cross-process pub/sub
+- Add Railway Redis addon (Railway dashboard → New → Database → Redis)
+- Install `ioredis` + `@socket.io/redis-adapter` on backend
+- Replace `Map` in `roomStore.ts` with ioredis hash operations
+- Use Socket.IO Redis adapter for cross-process pub/sub
 - Set TTL of 2 hours on rooms (auto-expire abandoned games)
 - No change to Socket.IO event interface — clients notice nothing
 
+**Env vars added:** `REDIS_URL` (Railway auto-injects)
+
 **Unlocks:** backend can restart/redeploy without dropping active games. Enables horizontal scaling.
 
-### 5b. Postgres — Users and match history
+### 5b. Supabase Postgres — Users and match history
 
-Required for user accounts, stats, and leaderboards.
+Required for user accounts, stats, and leaderboards. Hosted on Supabase instead of Railway.
 
-**Schema (initial):**
+**Why Supabase over Railway Postgres:**
+- Auth is built-in (Google OAuth, email/password, magic links) — saves ~3 weeks of custom auth work
+- User management dashboard included
+- Free tier covers this project for a long time (500MB DB, 50k MAU)
+- JWT issued by Supabase, verified on backend with `SUPABASE_JWT_SECRET`
+
+**Setup:**
+- Create project at supabase.com
+- Run SQL migrations for `users`, `matches`, `ratings` tables
+- Backend uses `@supabase/supabase-js` admin client
+
+**Env vars added:**
+- `SUPABASE_URL` — project URL (on Railway backend)
+- `SUPABASE_SERVICE_ROLE_KEY` — admin key (on Railway backend)
+- `VITE_SUPABASE_URL` — project URL (on Vercel frontend)
+- `VITE_SUPABASE_ANON_KEY` — public anon key (on Vercel frontend)
+
+**Schema:**
 ```sql
 users (
-  id          UUID PRIMARY KEY,
+  id          UUID PRIMARY KEY,  -- Supabase auth.users.id
   username    TEXT UNIQUE NOT NULL,
-  email       TEXT UNIQUE NOT NULL,
-  password_hash TEXT,
   avatar_url  TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 )
 
 matches (
-  id          UUID PRIMARY KEY,
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   room_code   TEXT NOT NULL,
   p1_user_id  UUID REFERENCES users(id),
   p2_user_id  UUID REFERENCES users(id),
@@ -176,24 +197,37 @@ ratings (
 
 ---
 
-## Phase 6 — User Accounts and Auth
+## Phase 6 — User Accounts and Auth (via Supabase)
+
+Supabase Auth handles Google OAuth, email/password, and JWT issuance — replacing what would otherwise
+be ~3 weeks of custom implementation.
 
 ### 6a. Account creation and login
 
 **Flows:**
-- Email/password signup with email verification
-- OAuth: Google (primary), GitHub (optional)
-- Guest → account upgrade (link existing session to new account)
+- Google OAuth (primary): `supabase.auth.signInWithOAuth({ provider: 'google' })`
+- Email/password: `supabase.auth.signInWithPassword({...})` — verification built in
+- Guest → account upgrade: link existing `sessionId` to new Supabase `userId` after sign-in
 
-**Implementation:**
-- JWT-based auth (short-lived access token + refresh token in httpOnly cookie)
-- `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`
-- `GET /auth/google` — OAuth redirect
-- Password reset flow (email link)
+**What Supabase handles automatically:**
+- Token issuance and refresh
+- Email verification
+- Password reset (email link)
+- Google OAuth PKCE flow
+- User management dashboard
+
+**Backend auth middleware:**
+- Verify `Authorization: Bearer <supabase-jwt>` using `SUPABASE_JWT_SECRET`
+- Protected routes attach `req.userId` (Supabase `user.id`)
+
+**Required setup:**
+- Supabase dashboard → Authentication → Providers → enable Google
+- Google Cloud Console → create OAuth 2.0 credentials → add redirect URI from Supabase
 
 **Frontend:**
-- Replace landing page "display name" with proper login/signup card
-- Guest mode still available (display name treated as ephemeral)
+- `@supabase/supabase-js` client with `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
+- Zustand `authStore.ts` — tracks `user`, `session`, loading state
+- Landing page: optional sign-in card (guest mode still works without an account)
 
 ### 6b. User profiles
 

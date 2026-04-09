@@ -36,10 +36,14 @@ export default function LandingPage() {
       localStorage.setItem('ttg_roomCode', roomCode);
 
       const socket = getSocket();
-      socket.connect();
-      socket.once('connect', () => {
+      if (socket.connected) {
         socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
-      });
+      } else {
+        socket.connect();
+        socket.once('connect', () => {
+          socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
+        });
+      }
 
       navigate(`/room/${roomCode}`);
     } catch (e) {
@@ -71,10 +75,14 @@ export default function LandingPage() {
       localStorage.setItem('ttg_roomCode', roomCode);
 
       const socket = getSocket();
-      socket.connect();
-      socket.once('connect', () => {
+      if (socket.connected) {
         socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
-      });
+      } else {
+        socket.connect();
+        socket.once('connect', () => {
+          socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
+        });
+      }
 
       navigate(`/room/${roomCode}`);
     } catch (e) {

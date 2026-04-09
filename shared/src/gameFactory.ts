@@ -6,7 +6,8 @@ const FULL_INVENTORY: Inventory = { small: 3, medium: 3, large: 3 };
 function makePlayer(
   id: 'P1' | 'P2',
   displayName: string,
-  sessionId: string
+  sessionId: string,
+  userId: string | null = null
 ): Player {
   return {
     id,
@@ -15,6 +16,7 @@ function makePlayer(
     socketId: null,
     connected: false,
     inventory: { ...FULL_INVENTORY },
+    userId,
   };
 }
 
@@ -32,7 +34,8 @@ export function generateRoomCode(): string {
 export function createInitialState(
   roomCode: string,
   p1Name: string,
-  p1SessionId: string
+  p1SessionId: string,
+  p1UserId: string | null = null
 ): GameState {
   const now = Date.now();
   return {
@@ -40,7 +43,7 @@ export function createInitialState(
     status: 'WAITING',
     board: createEmptyBoard(),
     players: {
-      P1: makePlayer('P1', p1Name, p1SessionId),
+      P1: makePlayer('P1', p1Name, p1SessionId, p1UserId),
       P2: makePlayer('P2', '', ''),
     },
     currentTurn: 'P1',
@@ -62,14 +65,15 @@ export function createInitialState(
 export function addSecondPlayer(
   state: GameState,
   p2Name: string,
-  p2SessionId: string
+  p2SessionId: string,
+  p2UserId: string | null = null
 ): GameState {
   return {
     ...state,
     status: 'LOBBY',
     players: {
       ...state.players,
-      P2: makePlayer('P2', p2Name, p2SessionId),
+      P2: makePlayer('P2', p2Name, p2SessionId, p2UserId),
     },
     updatedAt: Date.now(),
   };

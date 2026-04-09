@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore.js';
@@ -7,6 +7,12 @@ import { useAuthStore } from '../stores/authStore.js';
 import { supabaseEnabled } from '../lib/supabase.js';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
+
+function authHeaders(token: string | null): Record<string, string> {
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  return h;
+}
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -18,17 +24,69 @@ export default function LandingPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { user, signInWithGoogle, signOut } = useAuthStore();
+  const { user, signInWithGoogle, signOut, getToken } = useAuthStore();
+  const [usernamePrompt, setUsernamePrompt] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameLoading, setUsernameLoading] = useState(false);
+  const [profile, setProfile] = useState<{ username: string } | null>(null);
+
+  // When user signs in, check if they have a profile; if not, prompt for username
+  useEffect(() => {
+    if (!user) { setProfile(null); return; }
+    const token = getToken();
+    fetch(`${SOCKET_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.username) {
+          setProfile(data);
+          // Pre-fill display name with their username
+          setDisplayName(data.username);
+        } else {
+          setUsernamePrompt(true);
+        }
+      })
+      .catch(() => setUsernamePrompt(true));
+  }, [user]);
+
+  async function handleSetUsername() {
+    const trimmed = usernameInput.trim();
+    if (trimmed.length < 3 || trimmed.length > 20) return;
+    setUsernameLoading(true);
+    setUsernameError('');
+    const token = getToken();
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/users/me`, {
+        method: 'PUT',
+        headers: authHeaders(token),
+        body: JSON.stringify({ username: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUsernameError(data.error ?? 'Failed to save username.');
+        return;
+      }
+      setProfile(data);
+      setDisplayName(trimmed);
+      setUsernamePrompt(false);
+    } catch {
+      setUsernameError('Network error. Please try again.');
+    } finally {
+      setUsernameLoading(false);
+    }
+  }
+
   const nameValid = displayName.trim().length >= 3 && displayName.trim().length <= 16;
 
   async function handleCreate() {
     if (!nameValid) return;
     setLoading(true);
     setError('');
+    const token = getToken();
     try {
       const res = await fetch(`${SOCKET_URL}/api/rooms`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ displayName: displayName.trim() }),
       });
       if (!res.ok) throw new Error('Failed to create room.');
@@ -61,10 +119,11 @@ export default function LandingPage() {
     setLoading(true);
     setError('');
     const code = joinCode.trim().toUpperCase();
+    const token = getToken();
     try {
       const res = await fetch(`${SOCKET_URL}/api/rooms/${code}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(token),
         body: JSON.stringify({ displayName: displayName.trim() }),
       });
       if (!res.ok) {
@@ -96,6 +155,72 @@ export default function LandingPage() {
   }
 
   return (
+    <>
+    {/* Username setup modal — shown on first sign-in */}
+    <AnimatePresence>
+      {usernamePrompt && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.94, y: 16 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.94, y: 16 }}
+            style={{
+              background: 'rgba(20,28,51,0.97)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '1.25rem', padding: '2rem', width: '100%', maxWidth: '22rem',
+              boxShadow: '0 32px 64px rgba(0,0,0,0.5)',
+            }}
+          >
+            <h2 style={{ margin: '0 0 0.5rem', fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700 }}>
+              Choose a username
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: '0 0 1.25rem' }}>
+              This is how other players will see you.
+            </p>
+            <input
+              type="text"
+              placeholder="Username (3–20 chars)"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              maxLength={20}
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleSetUsername()}
+              style={{ ...inputStyle, marginBottom: '0.75rem' }}
+            />
+            {usernameError && (
+              <p style={{ color: '#f87171', fontSize: '0.8rem', margin: '0 0 0.75rem',
+                padding: '0.4rem 0.6rem', background: 'rgba(239,68,68,0.1)',
+                borderRadius: '0.375rem', border: '1px solid rgba(239,68,68,0.2)' }}>
+                {usernameError}
+              </p>
+            )}
+            <button
+              onClick={handleSetUsername}
+              disabled={usernameInput.trim().length < 3 || usernameLoading}
+              style={{
+                ...btnStyle, width: '100%',
+                background: usernameInput.trim().length >= 3
+                  ? 'linear-gradient(135deg, var(--p1-primary) 0%, #1d4ed8 100%)'
+                  : 'rgba(37,99,235,0.2)',
+                color: usernameInput.trim().length >= 3 ? '#fff' : 'rgba(255,255,255,0.35)',
+                cursor: usernameInput.trim().length >= 3 && !usernameLoading ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {usernameLoading ? <Spinner /> : 'Save Username'}
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
     <main style={{
       display: 'flex',
       flexDirection: 'column',
@@ -377,7 +502,7 @@ export default function LandingPage() {
                 }}>
                   {user.email?.[0].toUpperCase() ?? '?'}
                 </div>
-                <span style={{ color: 'var(--text)' }}>{user.email}</span>
+                <span style={{ color: 'var(--text)' }}>{profile?.username ?? user.email}</span>
                 <button
                   onClick={signOut}
                   style={{
@@ -439,6 +564,7 @@ export default function LandingPage() {
         </div>
       </div>
     </main>
+    </>
   );
 }
 

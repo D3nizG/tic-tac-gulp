@@ -11,6 +11,7 @@ import {
 } from '@tic-tac-gulp/shared';
 import type { GameState, MoveEvent, PlayerId, PieceSize } from '@tic-tac-gulp/shared';
 import { roomStore } from '../store/roomStore.js';
+import { recordMatch } from '../db/matchRecorder.js';
 
 const TURN_TIMEOUT_MS = 13_000;
 
@@ -74,6 +75,8 @@ function startTurnTimer(io: Server, roomCode: string) {
         winner: state.winner,
         reason: state.endReason,
       });
+      recordMatch(state, state.players.P1.userId ?? null, state.players.P2.userId ?? null)
+        .catch((err: Error) => console.error('[handlers] recordMatch error:', err.message));
     } else {
       startTurnTimer(io, roomCode);
     }
@@ -302,6 +305,8 @@ export function registerSocketHandlers(
             winner: state.winner,
             reason: state.endReason,
           });
+          recordMatch(state, state.players.P1.userId ?? null, state.players.P2.userId ?? null)
+            .catch((err: Error) => console.error('[handlers] recordMatch error:', err.message));
         } else {
           startTurnTimer(io, roomCode);
         }
@@ -335,6 +340,8 @@ export function registerSocketHandlers(
         winner: state.winner,
         reason: 'resign',
       });
+      recordMatch(state, state.players.P1.userId ?? null, state.players.P2.userId ?? null)
+        .catch((err: Error) => console.error('[handlers] recordMatch error:', err.message));
     });
 
     // ── chat:message ──────────────────────────────────────────────────────
@@ -444,6 +451,8 @@ export function registerSocketHandlers(
           winner: s.winner,
           reason: 'forfeit',
         });
+        recordMatch(s, s.players.P1.userId ?? null, s.players.P2.userId ?? null)
+          .catch((err: Error) => console.error('[handlers] recordMatch error:', err.message));
       });
     });
   });

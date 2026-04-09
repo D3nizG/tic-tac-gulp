@@ -5,6 +5,7 @@ import {
   generateRoomCode,
 } from '@tic-tac-gulp/shared';
 import { roomStore } from '../store/roomStore.js';
+import { optionalAuth } from '../middleware/auth.js';
 
 export const roomsRouter = Router();
 
@@ -12,7 +13,7 @@ export const roomsRouter = Router();
  * POST /api/rooms
  * Creates a new room. Returns roomCode, playerId (P1), and sessionId.
  */
-roomsRouter.post('/', (req, res) => {
+roomsRouter.post('/', optionalAuth, (req, res) => {
   const { displayName } = req.body as { displayName?: string };
 
   if (!displayName || displayName.trim().length < 3 || displayName.trim().length > 16) {
@@ -22,8 +23,9 @@ roomsRouter.post('/', (req, res) => {
 
   const roomCode = generateRoomCode();
   const sessionId = uuidv4();
+  const userId = req.userId ?? null;
 
-  const state = createInitialState(roomCode, displayName.trim(), sessionId);
+  const state = createInitialState(roomCode, displayName.trim(), sessionId, userId);
   roomStore.set(roomCode, state);
   roomStore.bindSession(sessionId, roomCode);
 
@@ -34,7 +36,7 @@ roomsRouter.post('/', (req, res) => {
  * POST /api/rooms/:code/join
  * Joins an existing room as P2.
  */
-roomsRouter.post('/:code/join', (req, res) => {
+roomsRouter.post('/:code/join', optionalAuth, (req, res) => {
   const { code } = req.params;
   const { displayName } = req.body as { displayName?: string };
 
@@ -59,9 +61,20 @@ roomsRouter.post('/:code/join', (req, res) => {
   }
 
   const sessionId = uuidv4();
+  const userId = req.userId ?? null;
+
+  // Store the userId on the room state so the socket handler can use it
+  const updatedState = {
+    ...state,
+    players: {
+      ...state.players,
+      // Pre-populate P2's userId — displayName and sessionId are set in socket room:join
+      P2: { ...state.players.P2, userId },
+    },
+  };
+  roomStore.set(code.toUpperCase(), updatedState);
   roomStore.bindSession(sessionId, code.toUpperCase());
 
-  // P2 info will be set when they join via WebSocket (room:join event)
   res.status(200).json({ roomCode: code.toUpperCase(), playerId: 'P2', sessionId });
 });
 

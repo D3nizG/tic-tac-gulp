@@ -37,6 +37,8 @@ export interface Player {
   socketId: string | null;
   connected: boolean;
   inventory: Inventory;
+  /** Supabase user id — null for guest players. */
+  userId: string | null;
 }
 
 // ─── Game State ───────────────────────────────────────────────────────────────

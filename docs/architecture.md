@@ -302,8 +302,26 @@ socket rematch:accept ×2     → resetGameState(), status → IN_PROGRESS
 
 The MVP runs on a single Node.js process. To scale horizontally:
 
-1. Replace in-memory `roomStore` with a Redis adapter.
+1. Replace in-memory `roomStore` with a Redis adapter (Phase 5a).
 2. Use Socket.IO's Redis adapter (`@socket.io/redis-adapter`) for cross-process event broadcasting.
 3. Add a sticky-session load balancer (or use WebSocket-aware LB).
 
 This path is non-breaking — the interface of `roomStore` is already abstracted.
+
+---
+
+## Planned Architecture Changes (Future Phases)
+
+| Phase | Change | Why |
+|---|---|---|
+| 5a | Redis `roomStore` | Rooms survive backend restarts; enables horizontal scale |
+| 5b | Postgres `users` + `matches` | Persistent accounts, stats, match history |
+| 6 | JWT auth middleware | Protect user-scoped endpoints; guest sessions still supported |
+| 6 | `GET /u/:username` profile endpoint | Serve career stats for profile pages and overlays |
+| 7 | Matchmaking queue (Redis sorted set) | Pair anonymous or ranked players without invite codes |
+| 7 | Elo rating system | Update `ratings` table after each ranked game |
+| 8 | AI move generator (`shared/src/ai/`) | Pure function, reuses game logic, runs client-side |
+| 9 | Presence channel (Socket.IO room per user) | Friend online/offline status, challenge notifications |
+| 9 | `friendships` table | Friend requests, challenge flow |
+
+See [`docs/roadmap.md`](roadmap.md) for full implementation details on each phase.

@@ -121,9 +121,26 @@ Add the domain in Vercel → Project → Settings → Domains, then add the CNAM
 
 ---
 
-## Future: Redis (Phase 4)
+## Future Infrastructure
+
+### Phase 5a — Redis
 
 1. Railway → **New** → **Database** → **Redis** → attach to your service
 2. Railway auto-injects `REDIS_URL` — the `roomStore` interface stays the same
 3. Update `backend/src/store/roomStore.ts` to use the Redis adapter
-4. Rooms will survive backend restarts and support horizontal scaling
+4. Install `@socket.io/redis-adapter` for multi-process event sync
+
+### Phase 5b — Postgres
+
+1. Railway → **New** → **Database** → **PostgreSQL** → attach to your service
+2. Railway auto-injects `DATABASE_URL`
+3. Run migrations via `drizzle-orm` or `node-postgres`
+4. Initial tables: `users`, `matches`, `ratings` (see [`docs/roadmap.md`](roadmap.md))
+
+### Phase 6 — Auth
+
+- Add `JWT_SECRET` to Railway env vars
+- Google OAuth: add `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
+- Frontend: add `VITE_GOOGLE_CLIENT_ID` to Vercel env vars
+
+See [`docs/roadmap.md`](roadmap.md) for full implementation plans per phase.

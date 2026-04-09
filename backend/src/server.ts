@@ -5,7 +5,10 @@ import cors from 'cors';
 import { roomsRouter } from './routes/rooms.js';
 import { registerSocketHandlers } from './socket/handlers.js';
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
+// Supports a comma-separated list of origins, e.g.:
+// FRONTEND_ORIGIN=https://tic-tac-gulp.d3nizg.dev,http://localhost:3000
+const rawOrigin = process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
+const ALLOWED_ORIGINS = rawOrigin.split(',').map((o) => o.trim());
 
 export function createServer() {
   const app = express();
@@ -13,12 +16,12 @@ export function createServer() {
 
   const io = new SocketIOServer(httpServer, {
     cors: {
-      origin: FRONTEND_ORIGIN,
+      origin: ALLOWED_ORIGINS,
       methods: ['GET', 'POST'],
     },
   });
 
-  app.use(cors({ origin: FRONTEND_ORIGIN }));
+  app.use(cors({ origin: ALLOWED_ORIGINS }));
   app.use(express.json());
 
   // Health check

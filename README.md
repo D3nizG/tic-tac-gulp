@@ -122,24 +122,33 @@ npm test
 
 ## Current Status
 
-### What works today (invite-only MVP)
+### What works today
 
 - Create a game room and share a 6-character code with a friend
 - Full 3D board rendered with React Three Fiber — constrained orbit camera, piece drop animations, win cell pulse, hover ghosts
 - Server-authoritative game state — no client-side cheating possible
 - Disconnect/reconnect with 60-second forfeit window
-- Rematch flow (both players must accept)
+- Resign mid-game with a 2-click confirm (auto-cancels)
+- In-game chat with unread badge, rate limiting, player-color bubbles
+- 3-state rematch indicator (idle / waiting / opponent wants / unavailable)
+- Opponent profile overlay (session W/L/D + current inventory)
+- Game elapsed clock
 - Responsive down to 375px
+
+### What's left in Phase 4
+
+- Per-turn countdown (13s) with server-side auto-move
+- Player-perspective camera angles (P1 and P2 see from opposite sides)
+- Local pass-and-play mode (2 players, same device)
 
 ### What's missing for a full web app
 
 See [`docs/roadmap.md`](docs/roadmap.md) for the full breakdown. In short:
 
 - User accounts, auth, persistent profiles
-- In-game quality of life (resign, in-game chat, game timer, opponent profile overlay, rematch state indicator)
-- Matchmaking (ranked/casual queue, not just invite codes)
-- Social layer (friends, notifications, chat)
-- AI opponent (solo practice)
+- Matchmaking (ranked/casual queue)
+- Social layer (friends, notifications)
+- AI opponent
 - Leaderboard and stats
 - Redis persistence (rooms survive backend restarts)
 - Database (users, match history, ratings)
@@ -151,10 +160,10 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the full breakdown. In short:
 | Phase | Goal                                         | Status       |
 |-------|----------------------------------------------|--------------|
 | 0     | Planning & spec                              | ✅ Done      |
-| 1     | Shared game logic + tests                    | ✅ Done (29 tests passing) |
+| 1     | Shared game logic + tests                    | ✅ Done (40 tests passing) |
 | 2     | Multiplayer backend                          | ✅ Done (Socket.IO, rooms, reconnect, forfeit) |
 | 3     | 3D frontend, Motion UI, Vercel deploy        | ✅ Done      |
-| 4     | In-game polish (resign, chat, timer, rematch UX) | Next    |
+| 4     | In-game polish                               | 🔄 In progress |
 | 5     | Redis + Postgres + user accounts + auth      | Planned      |
 | 6     | Matchmaking, profiles, stats, leaderboard    | Planned      |
 | 7     | AI opponent                                  | Planned      |

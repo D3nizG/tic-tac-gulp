@@ -83,6 +83,11 @@ function attachListeners(s: Socket) {
     store().setRematchState('unavailable');
   });
 
+  s.on('player:role', (data: { yourPlayerId: PlayerId }) => {
+    const { roomCode, sessionId } = store();
+    store().setSession(data.yourPlayerId, roomCode ?? '', sessionId ?? '');
+  });
+
   s.on('player:disconnected', (data: { playerId: PlayerId; timeoutSeconds: number }) => {
     store().setDisconnectedPlayer(data.playerId);
   });

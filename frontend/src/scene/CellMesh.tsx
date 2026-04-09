@@ -6,10 +6,10 @@ import PieceMesh from './PieceMesh.js';
 import { cellToWorld } from './Board.js';
 
 const CELL_SIZE = 1.7;
-const PIECE_DIMS: Record<1 | 2 | 3, { h: number }> = {
-  1: { h: 0.18 },
-  2: { h: 0.26 },
-  3: { h: 0.36 },
+const PIECE_DIMS: Record<1 | 2 | 3, { r: number; h: number }> = {
+  1: { r: 0.32, h: 0.18 },
+  2: { r: 0.42, h: 0.26 },
+  3: { r: 0.54, h: 0.36 },
 };
 
 const PLAYER_COLORS: Record<PlayerId, string> = {
@@ -48,14 +48,13 @@ export default function CellMesh({
 
   const [wx, , wz] = cellToWorld(cell.row, cell.col);
 
-  // Compute stacked Y positions for each piece
-  const stackYPositions: number[] = [];
-  let cumY = 0.02; // just above board surface
-  for (const piece of cell.stack) {
-    cumY += PIECE_DIMS[piece.size as 1 | 2 | 3].h / 2;
-    stackYPositions.push(cumY);
-    cumY += PIECE_DIMS[piece.size as 1 | 2 | 3].h / 2 + 0.01;
-  }
+  // Each piece rests at the board surface (not cumulative stacking).
+  // The top piece sits at its own natural height; buried pieces are at the same base.
+  // Visually the larger top piece covers any smaller buried piece from above.
+  const stackYPositions: number[] = cell.stack.map((piece) => {
+    const h = PIECE_DIMS[piece.size as 1 | 2 | 3].h;
+    return 0.02 + h / 2;
+  });
 
   // Win cell glow pulse
   useFrame(({ clock }) => {
@@ -147,23 +146,40 @@ export default function CellMesh({
         </mesh>
       )}
 
-      {/* Stacked pieces */}
-      {cell.stack.map((piece, i) => {
-        const isTop = i === cell.stack.length - 1;
-        const isBuried = !isTop;
-        const justPlaced = isTop && lastPlacedMoveCount === currentMoveCount - 1;
+      {/* Buried piece indicator — faint colored ring at board level for each hidden piece */}
+      {cell.stack.slice(0, -1).map((piece, i) => (
+        <mesh key={`buried-${i}`} position={[0, 0.013, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[
+            PIECE_DIMS[piece.size as 1 | 2 | 3].r * 0.55,
+            PIECE_DIMS[piece.size as 1 | 2 | 3].r * 0.85,
+            32
+          ]} />
+          <meshBasicMaterial
+            color={piece.owner === 'P1' ? '#2563eb' : '#ea580c'}
+            transparent
+            opacity={0.22}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+
+      {/* Top (visible) piece only — buried pieces are covered and not rendered */}
+      {cell.stack.length > 0 && (() => {
+        const i = cell.stack.length - 1;
+        const piece = cell.stack[i];
+        const justPlaced = lastPlacedMoveCount === currentMoveCount - 1;
         return (
           <PieceMesh
             key={i}
             owner={piece.owner}
             size={piece.size as 1 | 2 | 3}
             position={[0, stackYPositions[i], 0]}
-            buried={isBuried}
-            isTop={isTop}
+            buried={false}
+            isTop={true}
             justPlaced={justPlaced}
           />
         );
-      })}
+      })()}
     </group>
   );
 }

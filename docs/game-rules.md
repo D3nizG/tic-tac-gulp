@@ -64,9 +64,14 @@ A move is the placement of one of your pieces on a board cell.
 
 **Rules:**
 - You can gulp **your own** pieces and **your opponent's** pieces.
-- The gulped piece remains in the stack but is **no longer visible**.
+- The gulped piece remains in the stack but is **no longer visible** — the larger piece fully covers it.
 - Only the **topmost visible piece** on a cell counts.
 - A **Large** piece (size 3) **cannot be covered** — nothing is bigger.
+
+**Visual representation (3D board):**
+- The top piece renders fully and sits at board level, as if it were placed on an empty cell.
+- Buried pieces are hidden — the larger piece covers them completely.
+- A faint colored ring at the cell's base indicates a buried piece exists (and its owner's color), providing strategic information without obscuring the top piece.
 
 ---
 

@@ -119,17 +119,49 @@ export function registerSocketHandlers(
           },
         };
 
+        // ── Randomise who is P1 / P2 ──────────────────────────────────────
+        // When P2 joins (both players now in the room), flip a coin to decide
+        // which session becomes P1 and which becomes P2.  Both players are
+        // notified of their assigned role so the client stores the correct side.
+        let actualPlayerId: PlayerId = playerId;
+        if (playerId === 'P2' && state.status === 'WAITING') {
+          const swap = Math.random() < 0.5;
+          if (swap) {
+            // Swap P1 ↔ P2 player data
+            const origP1 = { ...state.players.P1 };
+            const origP2 = { ...state.players.P2 };
+            state = {
+              ...state,
+              players: {
+                P1: origP2, // joiner (this socket) becomes P1
+                P2: origP1, // creator becomes P2
+              },
+            };
+            actualPlayerId = 'P1';
+
+            // Update creator's socket metadata and tell them their new role
+            const creatorSocketId = origP1.socketId;
+            if (creatorSocketId) {
+              const creatorSocket = io.sockets.sockets.get(creatorSocketId);
+              if (creatorSocket) {
+                creatorSocket.data.playerId = 'P2';
+                creatorSocket.emit('player:role', { yourPlayerId: 'P2' });
+              }
+            }
+          }
+        }
+
         roomStore.set(roomCode, state);
         roomStore.bindSession(sessionId, roomCode);
 
         socket.join(roomCode);
         socket.data.sessionId = sessionId;
         socket.data.roomCode = roomCode;
-        socket.data.playerId = playerId;
+        socket.data.playerId = actualPlayerId;
 
         socket.emit('room:joined', {
           roomCode,
-          yourPlayerId: playerId,
+          yourPlayerId: actualPlayerId,
           gameState: sanitizeState(state),
         });
 

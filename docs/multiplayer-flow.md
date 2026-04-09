@@ -7,23 +7,30 @@ Sequence diagrams for all realtime flows.
 ## 1. Room Creation & Lobby
 
 ```
-Host (P1)                        Server                       Guest (P2)
-─────────                        ──────                       ──────────
+Creator                          Server                       Joiner
+───────                          ──────                       ──────
 POST /api/rooms ───────────────► create room (WAITING)
-◄─ { roomCode, P1, sessionId } ──
+◄─ { roomCode, playerId:'P1', sessionId } ──
 socket.connect()
-emit('room:join') ─────────────► mark P1 connected
+emit('room:join') ─────────────► mark connected
 ◄─ room:joined { gameState } ───
-[shares room code with P2]
+[shares room code with joiner]
                                                   POST /api/rooms/:code/join ──►
-                                                  ◄── { roomCode, P2, sessionId }
+                                                  ◄── { roomCode, playerId:'P2', sessionId }
                                                   socket.connect()
                                                   emit('room:join') ──────────►
                                  addSecondPlayer()
+                                 randomise() → flip coin for P1/P2 assignment
                                  status → LOBBY
-                                 ◄─ room:joined ─────────────────────────────
+                                 if swapped:
+                                   ◄─ player:role { yourPlayerId:'P2' } (creator)
+                                 ◄─ room:joined { yourPlayerId: assigned } ──
 ◄─ room:updated ─────────────── broadcast room:updated
 ```
+
+> **Note:** The P1/P2 assignment is random and occurs when the second player joins via socket.
+> The creator may end up as either P1 (blue, goes first) or P2 (orange, goes second).
+> Both clients receive their final `yourPlayerId` before the game starts.
 
 ---
 

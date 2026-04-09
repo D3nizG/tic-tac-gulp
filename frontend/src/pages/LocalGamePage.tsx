@@ -399,9 +399,15 @@ export default function LocalGamePage() {
   const passMode = useLocalStore((s) => s.passMode);
   const initGame = useLocalStore((s) => s.initGame);
   const reset = useLocalStore((s) => s.reset);
+  const navigate = useNavigate();
 
   // Clean up on unmount
   useEffect(() => () => reset(), [reset]);
+
+  function handleQuit() {
+    reset();
+    navigate('/');
+  }
 
   if (!gameState) {
     return <SetupScreen onStart={initGame} />;
@@ -440,12 +446,32 @@ export default function LocalGamePage() {
         <LocalGameScene />
       </div>
 
-      {/* Your panel (bottom) */}
+      {/* Your panel (bottom) + quit button */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        padding: '0.5rem 1rem 0.875rem', flexShrink: 0, zIndex: 10,
+        padding: '0.5rem 1rem 0.875rem', flexShrink: 0, zIndex: 10, gap: '0.5rem',
       }}>
         <LocalPlayerPanel playerId={currentTurn} isActive />
+        {status === 'IN_PROGRESS' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', maxWidth: '26rem', paddingInline: '0.25rem' }}>
+            <button
+              onClick={handleQuit}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.25rem 0.625rem', borderRadius: '2rem',
+                border: '1px solid rgba(255,255,255,0.07)', background: 'transparent',
+                color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem',
+                fontFamily: 'var(--font-display)', fontWeight: 600,
+                cursor: 'pointer', letterSpacing: '0.04em',
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(248,113,113,0.3)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.3)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; }}
+            >
+              ← Quit
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Pass screen */}

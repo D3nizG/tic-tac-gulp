@@ -132,14 +132,10 @@ npm test
 - In-game chat with unread badge, rate limiting, player-color bubbles
 - 3-state rematch indicator (idle / waiting / opponent wants / unavailable)
 - Opponent profile overlay (session W/L/D + current inventory)
-- Game elapsed clock
+- Per-turn 13s countdown timer with server-side auto-move
+- P1 and P2 see the board from opposite sides (camera perspectives)
+- Local pass-and-play mode (`/local`) — 2 players, same device, no server needed
 - Responsive down to 375px
-
-### What's left in Phase 4
-
-- Per-turn countdown (13s) with server-side auto-move
-- Player-perspective camera angles (P1 and P2 see from opposite sides)
-- Local pass-and-play mode (2 players, same device)
 
 ### What's missing for a full web app
 
@@ -163,7 +159,7 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the full breakdown. In short:
 | 1     | Shared game logic + tests                    | ✅ Done (40 tests passing) |
 | 2     | Multiplayer backend                          | ✅ Done (Socket.IO, rooms, reconnect, forfeit) |
 | 3     | 3D frontend, Motion UI, Vercel deploy        | ✅ Done      |
-| 4     | In-game polish                               | 🔄 In progress |
+| 4     | In-game polish                               | ✅ Done        |
 | 5     | Redis + Postgres + user accounts + auth      | Planned      |
 | 6     | Matchmaking, profiles, stats, leaderboard    | Planned      |
 | 7     | AI opponent                                  | Planned      |

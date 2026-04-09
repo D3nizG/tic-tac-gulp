@@ -4,7 +4,7 @@ This document covers the path from the current invite-only MVP to a fully-fledge
 
 ---
 
-## Current State (Phase 4 in progress)
+## Current State (Phase 4 complete)
 
 The game is fully playable with a shareable invite code. Two players can:
 - Create/join a room, play a full game on a 3D board
@@ -17,7 +17,7 @@ The game is fully playable with a shareable invite code. Two players can:
 - Play a second game without restarting the server (socket singleton fix)
 - Play on mobile (responsive to 375px)
 
-**What's left in Phase 4:** per-turn countdown timer with auto-move, player-perspective camera angles, local pass-and-play mode.
+**Phase 4 is complete.** All items shipped.
 
 ---
 
@@ -67,7 +67,7 @@ The game is fully playable with a shareable invite code. Two players can:
 - Fixed by checking `socket.connected` first and emitting `room:join` immediately if already live
 - Prevents "hanging on Connecting…" when starting a second game after leaving
 
-### 🔲 4g. Per-turn countdown timer + auto-move
+### ✅ 4g. Per-turn countdown timer + auto-move
 
 Each turn has a 13-second clock. If it expires, the server automatically plays a move.
 
@@ -85,7 +85,7 @@ Each turn has a 13-second clock. If it expires, the server automatically plays a
 - Frontend: `GameTimer` repurposed as per-turn countdown (count down from 13 to 0)
 - Pulse red when ≤ 5 seconds
 
-### 🔲 4h. Player-perspective camera angles
+### ✅ 4h. Player-perspective camera angles
 
 P1 and P2 see the board from opposite sides, reflecting the physical feeling of sitting across from each other.
 
@@ -96,7 +96,7 @@ P1 and P2 see the board from opposite sides, reflecting the physical feeling of 
 - `GameScene` reads `yourPlayerId` from store and passes to `CameraRig`
 - Players can still orbit freely within existing angle constraints
 
-### 🔲 4i. Local multiplayer (pass and play)
+### ✅ 4i. Local multiplayer (pass and play)
 
 Two players on the same device. No server or socket needed — pure shared game logic.
 

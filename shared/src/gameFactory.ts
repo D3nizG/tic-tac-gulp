@@ -51,6 +51,7 @@ export function createInitialState(
     createdAt: now,
     updatedAt: now,
     gameStartedAt: null,
+    turnStartedAt: null,
   };
 }
 
@@ -84,6 +85,7 @@ export function startGame(state: GameState): GameState {
     ...state,
     status: 'IN_PROGRESS',
     gameStartedAt: now,
+    turnStartedAt: now,
     updatedAt: now,
   };
 }
@@ -114,6 +116,7 @@ export function resetGameState(existing: GameState): GameState {
     winLine: null,
     endReason: null,
     gameStartedAt: now,
+    turnStartedAt: now,
     updatedAt: now,
   };
 }

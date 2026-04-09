@@ -1,63 +1,85 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useGameStore } from '../stores/gameStore.js';
 
-function formatTime(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+const TURN_LIMIT = 13;
 
 export default function GameTimer() {
   const gameState = useGameStore((s) => s.gameState);
-  const [elapsed, setElapsed] = useState(0);
+  const [remaining, setRemaining] = useState(TURN_LIMIT);
 
-  const gameStartedAt = gameState?.gameStartedAt ?? null;
+  const turnStartedAt = gameState?.turnStartedAt ?? null;
   const isActive = gameState?.status === 'IN_PROGRESS';
-  const isEnded = gameState?.status === 'ENDED';
 
   useEffect(() => {
-    if (!gameStartedAt) return;
-
-    // If game ended, show final duration (frozen)
-    if (isEnded) {
-      setElapsed(Date.now() - gameStartedAt);
+    if (!turnStartedAt || !isActive) {
+      setRemaining(TURN_LIMIT);
       return;
     }
 
-    if (!isActive) return;
+    function update() {
+      const elapsed = Date.now() - turnStartedAt!;
+      const r = Math.max(0, TURN_LIMIT - Math.floor(elapsed / 1000));
+      setRemaining(r);
+    }
 
-    setElapsed(Date.now() - gameStartedAt);
-    const id = setInterval(() => {
-      setElapsed(Date.now() - gameStartedAt);
-    }, 1000);
+    update();
+    const id = setInterval(update, 200); // poll at 200ms for smooth updates
     return () => clearInterval(id);
-  }, [gameStartedAt, isActive, isEnded]);
+  }, [turnStartedAt, isActive]);
 
-  if (!gameStartedAt || (!isActive && !isEnded)) return null;
+  if (!isActive || !turnStartedAt) return null;
+
+  const isUrgent = remaining <= 5;
+  const pct = remaining / TURN_LIMIT; // 1.0 → 0.0
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.35rem',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '2rem',
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.07)',
-      fontSize: '0.75rem',
-      fontFamily: 'var(--font-display)',
-      fontWeight: 600,
-      color: 'var(--text-muted)',
-      letterSpacing: '0.05em',
-      userSelect: 'none',
-    }}>
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.6 }}>
-        <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2"/>
-        <line x1="5" y1="5" x2="5" y2="2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="5" y1="5" x2="7.2" y2="6.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+      {/* Arc progress ring */}
+      <svg width="26" height="26" viewBox="0 0 26 26" style={{ flexShrink: 0 }}>
+        {/* Track */}
+        <circle
+          cx="13" cy="13" r="10"
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth="2.5"
+        />
+        {/* Progress */}
+        <motion.circle
+          cx="13" cy="13" r="10"
+          fill="none"
+          stroke={isUrgent ? '#f87171' : 'rgba(255,255,255,0.35)'}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeDasharray={`${2 * Math.PI * 10}`}
+          strokeDashoffset={`${2 * Math.PI * 10 * (1 - pct)}`}
+          transform="rotate(-90 13 13)"
+          animate={{ stroke: isUrgent ? '#f87171' : 'rgba(255,255,255,0.35)' }}
+          transition={{ duration: 0.3 }}
+        />
       </svg>
-      {formatTime(elapsed)}
+
+      {/* Number */}
+      <AnimatePresence mode="popLayout">
+        <motion.span
+          key={remaining}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 6 }}
+          transition={{ duration: 0.12 }}
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            color: isUrgent ? '#f87171' : 'var(--text-muted)',
+            minWidth: '1.2rem',
+            textAlign: 'left',
+            lineHeight: 1,
+          }}
+        >
+          {remaining}
+        </motion.span>
+      </AnimatePresence>
     </div>
   );
 }

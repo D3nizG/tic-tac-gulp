@@ -1,16 +1,43 @@
 import type { Server, Socket } from 'socket.io';
 import {
   applyMove,
-  isLegalMove,
   getMoveError,
+  getValidTargets,
   resolveAfterMove,
   forfeitGame,
   addSecondPlayer,
   startGame,
   resetGameState,
 } from '@tic-tac-gulp/shared';
-import type { MoveEvent, PlayerId } from '@tic-tac-gulp/shared';
+import type { GameState, MoveEvent, PlayerId, PieceSize } from '@tic-tac-gulp/shared';
 import { roomStore } from '../store/roomStore.js';
+
+const TURN_TIMEOUT_MS = 13_000;
+
+/** Per-room turn timer handles. */
+const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Returns the best auto-move for the current player: smallest piece, random valid cell. */
+function computeAutoMove(state: GameState): MoveEvent | null {
+  const { currentTurn, players, moveCount } = state;
+  const inv = players[currentTurn].inventory;
+  const sizes: PieceSize[] = [1, 2, 3];
+  for (const pieceSize of sizes) {
+    const count = pieceSize === 1 ? inv.small : pieceSize === 2 ? inv.medium : inv.large;
+    if (count === 0) continue;
+    const targets = getValidTargets(state, currentTurn, pieceSize);
+    if (targets.length > 0) {
+      const [row, col] = targets[Math.floor(Math.random() * targets.length)];
+      return { playerId: currentTurn, pieceSize, row, col, moveIndex: moveCount };
+    }
+  }
+  return null;
+}
+
+function clearTurnTimer(roomCode: string) {
+  const h = turnTimers.get(roomCode);
+  if (h) { clearTimeout(h); turnTimers.delete(roomCode); }
+}
 
 /** Strips server-private fields before sending state to clients. */
 function sanitizeState(state: ReturnType<typeof roomStore.get>) {
@@ -26,6 +53,33 @@ function sanitizeState(state: ReturnType<typeof roomStore.get>) {
 
 /** Per-session timestamp of last chat message (rate limiting). */
 const chatRateLimit = new Map<string, number>();
+
+function startTurnTimer(io: Server, roomCode: string) {
+  clearTurnTimer(roomCode);
+  const h = setTimeout(() => {
+    let state = roomStore.get(roomCode);
+    if (!state || state.status !== 'IN_PROGRESS') return;
+    const autoMove = computeAutoMove(state);
+    if (!autoMove) return;
+    state = resolveAfterMove(applyMove(state, autoMove));
+    const now = Date.now();
+    if (state.status === 'IN_PROGRESS') {
+      state = { ...state, turnStartedAt: now };
+    }
+    roomStore.set(roomCode, state);
+    io.to(roomCode).emit('game:state', { gameState: sanitizeState(state) });
+    if (state.status === 'ENDED') {
+      io.to(roomCode).emit('game:ended', {
+        gameState: sanitizeState(state),
+        winner: state.winner,
+        reason: state.endReason,
+      });
+    } else {
+      startTurnTimer(io, roomCode);
+    }
+  }, TURN_TIMEOUT_MS);
+  turnTimers.set(roomCode, h);
+}
 
 export function registerSocketHandlers(
   io: Server,
@@ -159,6 +213,7 @@ export function registerSocketHandlers(
       roomStore.set(roomCode, state);
 
       io.to(roomCode).emit('game:started', { gameState: sanitizeState(state) });
+      startTurnTimer(io, roomCode);
     });
 
     // ── move:attempt ──────────────────────────────────────────────────────
@@ -201,8 +256,12 @@ export function registerSocketHandlers(
         // Apply and resolve
         state = applyMove(state, moveEvent);
         state = resolveAfterMove(state);
+        if (state.status === 'IN_PROGRESS') {
+          state = { ...state, turnStartedAt: Date.now() };
+        }
         roomStore.set(roomCode, state);
 
+        clearTurnTimer(roomCode);
         io.to(roomCode).emit('game:state', { gameState: sanitizeState(state) });
 
         if (state.status === 'ENDED') {
@@ -211,6 +270,8 @@ export function registerSocketHandlers(
             winner: state.winner,
             reason: state.endReason,
           });
+        } else {
+          startTurnTimer(io, roomCode);
         }
       }
     );
@@ -236,6 +297,7 @@ export function registerSocketHandlers(
         updatedAt: Date.now(),
       };
       roomStore.set(roomCode, state);
+      clearTurnTimer(roomCode);
       io.to(roomCode).emit('game:ended', {
         gameState: sanitizeState(state),
         winner: state.winner,
@@ -292,6 +354,7 @@ export function registerSocketHandlers(
         state = resetGameState(state);
         roomStore.set(roomCode, state);
         io.to(roomCode).emit('rematch:started', { gameState: sanitizeState(state) });
+        startTurnTimer(io, roomCode);
       }
     });
 
@@ -334,6 +397,9 @@ export function registerSocketHandlers(
         playerId,
         timeoutSeconds: FORFEIT_TIMEOUT_MS / 1000,
       });
+
+      // Clear turn timer while player is disconnected
+      clearTurnTimer(roomCode);
 
       // Start forfeit timer
       roomStore.startForfeitTimer(sessionId, FORFEIT_TIMEOUT_MS, () => {

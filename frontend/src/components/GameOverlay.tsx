@@ -34,13 +34,9 @@ export default function GameOverlay() {
     : '#f87171';
 
   function handleLeave() {
+    emitRematchDecline(); // always notify opponent we're leaving
     reset();
     navigate('/');
-  }
-
-  function handleDeclineAndLeave() {
-    emitRematchDecline();
-    handleLeave();
   }
 
   // Rematch button content and behavior based on state
@@ -253,7 +249,7 @@ export default function GameOverlay() {
           </AnimatePresence>
 
           <button
-            onClick={rematchState === 'i_requested' ? handleDeclineAndLeave : handleLeave}
+            onClick={handleLeave}
             style={{
               flex: 1,
               padding: '0.875rem',

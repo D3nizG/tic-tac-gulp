@@ -2,8 +2,9 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage.js';
 
-// Lazy-load RoomPage so Three.js / R3F only initializes when entering a room
+// Lazy-load heavy pages so Three.js / R3F only initializes when needed
 const RoomPage = lazy(() => import('./pages/RoomPage.js'));
+const LocalGamePage = lazy(() => import('./pages/LocalGamePage.js'));
 
 function LoadingScreen() {
   return (
@@ -32,6 +33,14 @@ export default function App() {
         element={
           <Suspense fallback={<LoadingScreen />}>
             <RoomPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/local"
+        element={
+          <Suspense fallback={<LoadingScreen />}>
+            <LocalGamePage />
           </Suspense>
         }
       />

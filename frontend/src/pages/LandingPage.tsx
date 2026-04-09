@@ -316,6 +316,47 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
+        {/* Local play shortcut */}
+        <motion.button
+          onClick={() => navigate('/local')}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.18 }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '2rem',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'transparent',
+            color: 'var(--text-muted)',
+            fontSize: '0.8rem',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 600,
+            cursor: 'pointer',
+            letterSpacing: '0.03em',
+            transition: 'border-color 0.15s, color 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+            e.currentTarget.style.color = 'var(--text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
+        >
+          {/* Two-person icon */}
+          <svg width="14" height="12" viewBox="0 0 14 12" fill="none">
+            <circle cx="4.5" cy="3" r="2.2" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M0.5 11c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <circle cx="10.5" cy="3" r="1.8" stroke="currentColor" strokeWidth="1.2" opacity="0.6"/>
+            <path d="M9 10.5c.4-1.6 1.8-2.8 3.3-2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.6"/>
+          </svg>
+          Play Locally (2 players, same device)
+        </motion.button>
+
         {/* Rules */}
         <div
           style={{

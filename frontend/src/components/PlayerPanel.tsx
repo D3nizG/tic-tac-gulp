@@ -14,9 +14,10 @@ interface Props {
   playerId: PlayerId;
   isActive: boolean;
   isYou?: boolean;
+  onInfoClick?: () => void;
 }
 
-export default function PlayerPanel({ playerId, isActive, isYou = false }: Props) {
+export default function PlayerPanel({ playerId, isActive, isYou = false, onInfoClick }: Props) {
   const gameState = useGameStore((s) => s.gameState);
   const selectedPieceSize = useGameStore((s) => s.selectedPieceSize);
   const selectPiece = useGameStore((s) => s.selectPiece);
@@ -64,6 +65,39 @@ export default function PlayerPanel({ playerId, isActive, isYou = false }: Props
           <span style={{ fontWeight: 600, fontSize: '0.875rem', fontFamily: 'var(--font-display)' }}>
             {player.displayName}
           </span>
+          {!isYou && onInfoClick && (
+            <button
+              onClick={onInfoClick}
+              title="View opponent info"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '1.1rem',
+                height: '1.1rem',
+                borderRadius: '50%',
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'transparent',
+                color: 'rgba(255,255,255,0.35)',
+                fontSize: '0.6rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                flexShrink: 0,
+                lineHeight: 1,
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'rgba(255,255,255,0.35)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+              }}
+            >
+              i
+            </button>
+          )}
         </div>
         {isYou && (
           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>

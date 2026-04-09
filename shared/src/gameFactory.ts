@@ -50,6 +50,7 @@ export function createInitialState(
     endReason: null,
     createdAt: now,
     updatedAt: now,
+    gameStartedAt: null,
   };
 }
 
@@ -78,10 +79,12 @@ export function addSecondPlayer(
  * Returns a new state object.
  */
 export function startGame(state: GameState): GameState {
+  const now = Date.now();
   return {
     ...state,
     status: 'IN_PROGRESS',
-    updatedAt: Date.now(),
+    gameStartedAt: now,
+    updatedAt: now,
   };
 }
 
@@ -110,6 +113,7 @@ export function resetGameState(existing: GameState): GameState {
     winner: null,
     winLine: null,
     endReason: null,
+    gameStartedAt: now,
     updatedAt: now,
   };
 }

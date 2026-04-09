@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { useGameStore } from './gameStore.js';
 import type { GameState, PlayerId } from '@tic-tac-gulp/shared';
+import type { ChatMessage } from './gameStore.js';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
@@ -48,6 +49,14 @@ function attachListeners(s: Socket) {
   });
 
   s.on('game:ended', (data: { gameState: GameState }) => {
+    const { yourPlayerId } = store();
+    const { winner } = data.gameState;
+    if (yourPlayerId) {
+      if (winner === 'DRAW') store().incrementStats('draw');
+      else if (winner === yourPlayerId) store().incrementStats('win');
+      else store().incrementStats('loss');
+    }
+    store().setRematchState('idle');
     store().setGameState(data.gameState);
     store().selectPiece(null);
   });
@@ -57,12 +66,29 @@ function attachListeners(s: Socket) {
   });
 
   s.on('rematch:started', (data: { gameState: GameState }) => {
+    store().setRematchState('idle');
     store().setGameState(data.gameState);
     store().selectPiece(null);
   });
 
+  s.on('rematch:requested', () => {
+    store().setRematchState('opponent_requested');
+  });
+
+  s.on('rematch:declined', () => {
+    store().setRematchState('unavailable');
+  });
+
+  s.on('rematch:unavailable', () => {
+    store().setRematchState('unavailable');
+  });
+
   s.on('player:disconnected', (data: { playerId: PlayerId; timeoutSeconds: number }) => {
     store().setDisconnectedPlayer(data.playerId);
+  });
+
+  s.on('chat:message', (data: ChatMessage) => {
+    store().addChatMessage(data);
   });
 }
 
@@ -78,9 +104,10 @@ export function emitStartGame() {
   getSocket().emit('game:start', { sessionId, roomCode });
 }
 
-/** Emits rematch acceptance. */
+/** Emits rematch acceptance and marks local state as waiting. */
 export function emitRematchAccept() {
   const { sessionId, roomCode } = useGameStore.getState();
+  useGameStore.getState().setRematchState('i_requested');
   getSocket().emit('rematch:accept', { sessionId, roomCode });
 }
 
@@ -88,4 +115,16 @@ export function emitRematchAccept() {
 export function emitRematchDecline() {
   const { sessionId, roomCode } = useGameStore.getState();
   getSocket().emit('rematch:decline', { sessionId, roomCode });
+}
+
+/** Emits a resign event. */
+export function emitResign() {
+  const { sessionId, roomCode } = useGameStore.getState();
+  getSocket().emit('game:resign', { sessionId, roomCode });
+}
+
+/** Sends a chat message. */
+export function emitChat(text: string) {
+  const { sessionId, roomCode } = useGameStore.getState();
+  getSocket().emit('chat:message', { sessionId, roomCode, text });
 }

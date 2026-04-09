@@ -53,9 +53,10 @@ export interface GameState {
   winner: PlayerId | 'DRAW' | null;
   /** Cells that form the winning line, e.g. [[0,0],[1,1],[2,2]] */
   winLine: [number, number][] | null;
-  endReason: 'normal' | 'forfeit' | null;
-  createdAt: number; // epoch ms
-  updatedAt: number; // epoch ms
+  endReason: 'normal' | 'forfeit' | 'resign' | null;
+  createdAt: number;    // epoch ms
+  updatedAt: number;    // epoch ms
+  gameStartedAt: number | null; // epoch ms — set when status transitions to IN_PROGRESS
 }
 
 // ─── Move ─────────────────────────────────────────────────────────────────────

@@ -24,6 +24,9 @@ function sanitizeState(state: ReturnType<typeof roomStore.get>) {
   };
 }
 
+/** Per-session timestamp of last chat message (rate limiting). */
+const chatRateLimit = new Map<string, number>();
+
 export function registerSocketHandlers(
   io: Server,
   options: { forfeitTimeoutMs?: number } = {}
@@ -212,6 +215,59 @@ export function registerSocketHandlers(
       }
     );
 
+    // ── game:resign ───────────────────────────────────────────────────────
+    socket.on('game:resign', (data: { sessionId: string; roomCode: string }) => {
+      const { sessionId, roomCode } = data;
+      let state = roomStore.get(roomCode);
+      if (!state || state.status !== 'IN_PROGRESS') return;
+
+      const playerId: PlayerId | null =
+        state.players.P1.sessionId === sessionId ? 'P1' :
+        state.players.P2.sessionId === sessionId ? 'P2' : null;
+      if (!playerId) return;
+
+      const winner: PlayerId = playerId === 'P1' ? 'P2' : 'P1';
+      state = {
+        ...state,
+        status: 'ENDED',
+        winner,
+        winLine: null,
+        endReason: 'resign',
+        updatedAt: Date.now(),
+      };
+      roomStore.set(roomCode, state);
+      io.to(roomCode).emit('game:ended', {
+        gameState: sanitizeState(state),
+        winner: state.winner,
+        reason: 'resign',
+      });
+    });
+
+    // ── chat:message ──────────────────────────────────────────────────────
+    socket.on(
+      'chat:message',
+      (data: { sessionId: string; roomCode: string; text: string }) => {
+        const { sessionId, roomCode, text } = data;
+        const state = roomStore.get(roomCode);
+        if (!state || (state.status !== 'IN_PROGRESS' && state.status !== 'ENDED')) return;
+
+        const playerId: PlayerId | null =
+          state.players.P1.sessionId === sessionId ? 'P1' :
+          state.players.P2.sessionId === sessionId ? 'P2' : null;
+        if (!playerId) return;
+
+        const cleaned = text.trim().slice(0, 200);
+        if (!cleaned) return;
+
+        const now = Date.now();
+        const lastSent = chatRateLimit.get(sessionId) ?? 0;
+        if (now - lastSent < 1000) return; // 1 message per second
+        chatRateLimit.set(sessionId, now);
+
+        io.to(roomCode).emit('chat:message', { playerId, text: cleaned, timestamp: now });
+      }
+    );
+
     // ── rematch:accept ────────────────────────────────────────────────────
     socket.on('rematch:accept', (data: { sessionId: string; roomCode: string }) => {
       const { sessionId, roomCode } = data;
@@ -256,7 +312,13 @@ export function registerSocketHandlers(
       if (!sessionId || !roomCode || !playerId) return;
 
       let state = roomStore.get(roomCode);
-      if (!state || state.status === 'ENDED') return;
+      if (!state) return;
+
+      // If the game is already ended, notify the opponent that rematch is unavailable
+      if (state.status === 'ENDED') {
+        socket.to(roomCode).emit('rematch:unavailable', { playerId });
+        return;
+      }
 
       // Mark player as disconnected
       state = {

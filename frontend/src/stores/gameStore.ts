@@ -1,6 +1,20 @@
 import { create } from 'zustand';
 import type { GameState, PlayerId } from '@tic-tac-gulp/shared';
 
+export interface ChatMessage {
+  playerId: PlayerId;
+  text: string;
+  timestamp: number;
+}
+
+export type RematchState = 'idle' | 'i_requested' | 'opponent_requested' | 'unavailable';
+
+interface SessionStats {
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
 interface GameStore {
   // Server-authoritative state
   gameState: GameState | null;
@@ -18,6 +32,12 @@ interface GameStore {
   /** Which player just disconnected (for banner) */
   disconnectedPlayer: PlayerId | null;
 
+  // Phase 4 state
+  rematchState: RematchState;
+  chatMessages: ChatMessage[];
+  unreadChat: number;
+  sessionStats: SessionStats;
+
   // Actions
   setGameState: (state: GameState) => void;
   setSession: (playerId: PlayerId, roomCode: string, sessionId: string) => void;
@@ -27,6 +47,10 @@ interface GameStore {
   setMoveError: (error: string | null) => void;
   recordMove: (moveCount: number) => void;
   setDisconnectedPlayer: (p: PlayerId | null) => void;
+  setRematchState: (state: RematchState) => void;
+  addChatMessage: (msg: ChatMessage) => void;
+  clearUnreadChat: () => void;
+  incrementStats: (result: 'win' | 'loss' | 'draw') => void;
   reset: () => void;
 }
 
@@ -41,9 +65,13 @@ const initialState = {
   lastMoveError: null,
   lastPlacedMoveCount: null,
   disconnectedPlayer: null,
+  rematchState: 'idle' as RematchState,
+  chatMessages: [] as ChatMessage[],
+  unreadChat: 0,
+  sessionStats: { wins: 0, losses: 0, draws: 0 },
 };
 
-export const useGameStore = create<GameStore>((set) => ({
+export const useGameStore = create<GameStore>((set, get) => ({
   ...initialState,
 
   setGameState: (gameState) => set({ gameState }),
@@ -64,5 +92,27 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setDisconnectedPlayer: (disconnectedPlayer) => set({ disconnectedPlayer }),
 
-  reset: () => set(initialState),
+  setRematchState: (rematchState) => set({ rematchState }),
+
+  addChatMessage: (msg) =>
+    set((s) => ({
+      chatMessages: [...s.chatMessages, msg],
+      unreadChat: s.unreadChat + 1,
+    })),
+
+  clearUnreadChat: () => set({ unreadChat: 0 }),
+
+  incrementStats: (result) =>
+    set((s) => ({
+      sessionStats: {
+        wins: s.sessionStats.wins + (result === 'win' ? 1 : 0),
+        losses: s.sessionStats.losses + (result === 'loss' ? 1 : 0),
+        draws: s.sessionStats.draws + (result === 'draw' ? 1 : 0),
+      },
+    })),
+
+  reset: () => {
+    const { sessionStats } = get();
+    set({ ...initialState, sessionStats });
+  },
 }));

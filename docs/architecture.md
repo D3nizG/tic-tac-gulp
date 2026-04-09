@@ -39,47 +39,76 @@ tic-tac-gulp/
 ├── frontend/
 │   ├── index.html
 │   ├── vite.config.ts
+│   ├── vercel.json         ← SPA routing rewrite for Vercel
 │   └── src/
-│       ├── main.tsx
+│       ├── main.tsx        ← React root + ErrorBoundary
 │       ├── App.tsx         ← React Router routes
-│       ├── index.css       ← Design tokens + resets
+│       ├── index.css       ← Design tokens, fonts, resets
 │       ├── pages/
-│       │   ├── LandingPage.tsx
-│       │   └── RoomPage.tsx
+│       │   ├── LandingPage.tsx   ← Create/join game (Motion animated)
+│       │   └── RoomPage.tsx      ← Routes to LobbyView or GameView
 │       ├── components/
-│       │   ├── LobbyView.tsx
-│       │   ├── GameView.tsx
-│       │   ├── GameBoard.tsx
-│       │   ├── BoardCell.tsx
-│       │   ├── PlayerPanel.tsx
-│       │   └── GameOverOverlay.tsx
+│       │   ├── LobbyView.tsx         ← Lobby: room code, player slots (Motion)
+│       │   ├── GameView.tsx          ← Game shell: canvas + overlaid UI panels
+│       │   ├── PlayerPanel.tsx       ← Piece inventory selector (motion.button)
+│       │   ├── TurnBadge.tsx         ← AnimatePresence turn crossfade
+│       │   ├── GameOverlay.tsx       ← Spring-entrance win/lose/draw modal
+│       │   ├── ConnectionBanner.tsx  ← Slide-down disconnect notification
+│       │   └── ErrorBoundary.tsx     ← Catches render errors, shows stack trace
+│       ├── scene/                    ← Everything inside the R3F Canvas
+│       │   ├── GameScene.tsx         ← Canvas setup, lighting, fog, camera rig
+│       │   ├── Board.tsx             ← 3D board base plate + grid lines
+│       │   ├── CellMesh.tsx          ← Per-cell: click target, hover, highlights
+│       │   ├── PieceMesh.tsx         ← Animated piece (drop-in spring)
+│       │   └── CameraRig.tsx         ← Constrained OrbitControls
 │       └── stores/
-│           ├── gameStore.ts   ← Zustand: game + UI state
-│           └── socketStore.ts ← Socket.IO singleton + event wiring
+│           ├── gameStore.ts    ← Zustand: game + UI + animation state
+│           └── socketStore.ts  ← Socket.IO singleton + event wiring
 └── docs/
-    ├── game-rules.md
-    ├── state-model.md
-    ├── api-spec.md
-    ├── architecture.md    ← (this file)
-    └── multiplayer-flow.md
 ```
 
 ---
 
 ## Technology Stack
 
-| Layer              | Technology                     | Why                                              |
-|---|---|---|
-| Frontend           | React + TypeScript + Vite      | Mature, fast dev builds, great ecosystem         |
-| State management   | Zustand                        | Minimal boilerplate, works naturally with React  |
-| Realtime (client)  | socket.io-client               | Matches server, auto-reconnect built-in          |
-| Routing            | react-router-dom v6            | Standard SPA routing                            |
-| Backend            | Node.js + Express + TypeScript | Shared language with frontend, simple setup      |
-| Realtime (server)  | Socket.IO                      | Room abstraction, reconnect, fallback transport  |
-| Persistence (MVP)  | In-memory Map                  | Zero dependencies for Phase 1                    |
-| Persistence (v2)   | Redis (Railway addon)          | TTL, survives restarts, enables horizontal scale |
-| Testing (shared)   | Vitest                         | Fast, ESM-native, works with monorepo            |
-| Hosting            | Railway.app                    | WebSocket support, Redis addon, GitHub CI/CD     |
+| Layer              | Technology                               | Why                                              |
+|--------------------|------------------------------------------|--------------------------------------------------|
+| Frontend           | React 18 + TypeScript + Vite             | Mature, fast dev builds, great ecosystem         |
+| 3D rendering       | Three.js + React Three Fiber + Drei      | Declarative Three.js in React, excellent DX      |
+| UI animation       | Motion for React v12 (`motion/react`)    | Spring physics, AnimatePresence, performant       |
+| State management   | Zustand                                  | Minimal boilerplate, works naturally with React  |
+| Realtime (client)  | socket.io-client                         | Matches server, auto-reconnect built-in          |
+| Routing            | react-router-dom v6                      | Standard SPA routing                             |
+| Backend            | Node.js + Express + TypeScript           | Shared language with frontend, simple setup      |
+| Realtime (server)  | Socket.IO                                | Room abstraction, reconnect, fallback transport  |
+| Persistence (MVP)  | In-memory Map                            | Zero dependencies for Phase 1                    |
+| Persistence (v2)   | Redis (Railway addon)                    | TTL, survives restarts, enables horizontal scale |
+| Testing (shared)   | Vitest                                   | Fast, ESM-native, works with monorepo            |
+| Frontend hosting   | Vercel                                   | Static CDN, SPA routing, custom domain           |
+| Backend hosting    | Railway.app                              | WebSocket support, Redis addon, GitHub CI/CD     |
+
+---
+
+## Frontend Visual Design
+
+**Aesthetic:** Premium digital board game. Dark, tactile, strategic.
+
+| Token            | Value                  | Use                         |
+|------------------|------------------------|-----------------------------|
+| `--bg`           | `#0a0f1e`              | Page background             |
+| `--surface`      | `#141c33`              | Cards, panels               |
+| `--p1-primary`   | `#2563eb`              | P1 Blue pieces + UI         |
+| `--p2-primary`   | `#ea580c`              | P2 Orange pieces + UI       |
+| `--highlight`    | `#fbbf24`              | Win cells, your turn badge  |
+| `--font-display` | Oxanium                | Headings, scores, labels    |
+| `--font-body`    | DM Sans                | Body text, inputs           |
+
+**3D Scene:**
+- Canvas background: `#0a0f1e` + `FogExp2` density 0.038
+- Board: dark slate BoxGeometry, `MeshStandardMaterial` roughness 0.85
+- Pieces: `CylinderGeometry` — S(r:0.32, h:0.18), M(r:0.42, h:0.26), L(r:0.54, h:0.36)
+- Lighting: ambient `#8ba4d4` + directional with shadows + rim light `#4a7abf`
+- Camera: position `(0, 7, 5)`, fov 45, constrained orbit (no flip, no pan)
 
 ---
 
@@ -90,23 +119,21 @@ tic-tac-gulp/
 ```
 Frontend                         Backend (Node.js + Socket.IO)
 ────────                         ──────────────────────────────
-User selects piece
+User selects piece size
   → getValidTargets() [shared]   (client-side UI highlight only)
 User clicks valid cell
-  → socket.emit('move:attempt')
+  → socket.emit('move:attempt', { pieceSize, row, col, moveIndex })
                                  receive 'move:attempt'
                                    → getMoveError() [shared]
                                    → if error: emit 'move:error' to sender
                                    → applyMove() [shared]
                                    → resolveAfterMove() [shared]
-                                     → checkWin() [shared]
-                                     → checkDraw() [shared]
-                                     → nextTurn() [shared]
+                                     → checkWin() → checkDraw() → nextTurn()
                                    → roomStore.set(newState)
-                                   → io.to(room).emit('game:state')
-                                   → if ENDED: io.to(room).emit('game:ended')
+                                   → io.to(room).emit('game:state', { gameState })
 receive 'game:state'
-  → useGameStore.setGameState()
+  → recordMove(moveCount - 1)    ← triggers drop animation on last placed piece
+  → setGameState(gameState)
   → React re-renders board
 ```
 
@@ -117,7 +144,7 @@ Client                           Server
 ──────                           ──────
 page load → check localStorage
   → socket.connect()
-  → socket.emit('room:rejoin')
+  → socket.emit('room:rejoin', { sessionId, roomCode })
                                  receive 'room:rejoin'
                                    → match sessionId → playerId
                                    → cancel forfeit timer
@@ -127,6 +154,24 @@ page load → check localStorage
 receive 'room:joined'
   → restore full game state
   → render board as-is
+```
+
+### Disconnect / Forfeit Flow
+
+```
+Client disconnects               Server
+──────────────────               ──────
+socket 'disconnect'
+                                 start 60s forfeit timer
+                                 emit 'player:disconnected' to room
+                                   { playerId, timeoutSeconds: 60 }
+  [if reconnects within 60s]
+  socket.emit('room:rejoin')  →  cancel timer, restore session
+                                 emit 'player:reconnected'
+
+  [if timeout expires]
+                                 forfeitGame() → ENDED
+                                 emit 'game:ended' to room
 ```
 
 ---
@@ -150,13 +195,13 @@ receive 'room:joined'
 All game logic lives in `shared/src/` as **pure functions with no side effects**. This means:
 
 - Logic is fully unit-testable without a server or browser.
-- The same code path runs on the server (for authoritative validation) and can run on the client (for UI highlighting).
+- The same code runs on the server (authoritative validation) and client (UI highlighting).
 - An AI opponent or local-mode can import the same modules.
 
 Key modules:
 
 | Module             | Exports                                               |
-|---|---|
+|--------------------|-------------------------------------------------------|
 | `boardEngine`      | `applyMove`, `getTopPiece`, `createEmptyBoard`        |
 | `moveValidator`    | `isLegalMove`, `getMoveError`, `getValidTargets`      |
 | `winDetector`      | `checkWin`                                            |
@@ -171,20 +216,55 @@ Key modules:
 
 ```
 Zustand stores
-├── gameStore         ← Server-replicated state + UI state
-│   ├── gameState       (authoritative, set from WS events)
-│   ├── yourPlayerId
-│   ├── sessionId
-│   ├── roomCode
-│   ├── selectedPieceSize (UI only)
-│   ├── isConnected
-│   ├── isReconnecting
-│   └── lastMoveError
-└── socketStore       ← Socket.IO singleton (not a Zustand store)
-    └── getSocket()     emitMove(), emitStartGame(), etc.
+└── gameStore
+    ├── gameState              ← Full GameState from server (authoritative)
+    ├── yourPlayerId           ← Which player you are in this session
+    ├── roomCode
+    ├── sessionId              ← UUID for reconnection
+    ├── selectedPieceSize      ← UI: which piece size is currently selected
+    ├── isConnected            ← Socket connection status
+    ├── isReconnecting         ← True while trying to reconnect
+    ├── lastMoveError          ← Error string from last failed move attempt
+    ├── lastPlacedMoveCount    ← moveCount at time of last placement (for drop animation)
+    └── disconnectedPlayer     ← PlayerId of disconnected opponent (for banner)
+
+socketStore (not Zustand — plain module singleton)
+└── getSocket()               ← Creates/returns socket.io Socket
+    emitMove(size, row, col)
+    emitStartGame()
+    emitRematchAccept()
+    emitRematchDecline()
 ```
 
 The frontend never computes game outcomes — it renders whatever `gameStore.gameState` contains.
+
+---
+
+## 3D Scene Architecture
+
+The 3D game board runs inside a React Three Fiber `<Canvas>`. All scene components must be children of `<Canvas>` and use R3F-specific hooks (`useFrame`, `useThree`).
+
+```
+GameScene (Canvas)
+├── Lighting (ambientLight, directionalLight ×2, pointLight)
+├── Environment (city preset, environmentIntensity 0.3)
+├── CameraRig (OrbitControls — constrained, no pan, limited angles)
+├── Board (base plate + grid lines as BoxGeometry meshes)
+└── CellMesh ×9 (one per cell)
+    ├── Invisible click plane (BoxGeometry, transparent)
+    ├── Cell surface tint (win / valid / hover states)
+    ├── Valid target ring (RingGeometry, AnimatePresence-like via useFrame)
+    ├── Ghost piece on hover (translucent CylinderGeometry)
+    └── PieceMesh ×n (stacked, computed Y positions)
+        ├── Top piece: full material + emissive glow
+        └── Buried pieces: semi-transparent (opacity 0.18)
+```
+
+**Drop animation:** `PieceMesh` stores `dropY` in a ref, initializes to `position.y + 3.5` when `justPlaced`, and lerps toward `restY` each frame via `useFrame`.
+
+**Win cell:** `useFrame` in `CellMesh` pulses `emissiveIntensity` of the cell glow mesh using `Math.sin(clock.elapsedTime)`.
+
+**Invalid shake:** `CellMesh` uses a `shakeRef` counter decremented each frame, with `Math.sin` applied to the group's X position.
 
 ---
 
@@ -198,6 +278,7 @@ socket room:join (P2)        → P2 connects, status → LOBBY
 socket game:start            → host starts, status → IN_PROGRESS
 [moves play out]
 status → ENDED               → rematch or leave
+socket rematch:accept ×2     → resetGameState(), status → IN_PROGRESS
 ```
 
 ---
@@ -205,7 +286,7 @@ status → ENDED               → rematch or leave
 ## Security Model
 
 | Threat                | Mitigation                                                   |
-|---|---|
+|-----------------------|--------------------------------------------------------------|
 | Illegal moves         | Server validates every move with `isLegalMove()` before applying |
 | Move tampering        | Client sends intents only — never game state                 |
 | Wrong-turn moves      | `moveIndex` must equal `state.moveCount`; turn checked       |
@@ -213,7 +294,7 @@ status → ENDED               → rematch or leave
 | Session spoofing      | `sessionId` is a server-generated UUID; not guessable        |
 | Stale rooms           | Redis TTL of 2 hours (Phase 4); in-memory rooms cleared on game end |
 | XSS / injection       | Display names validated (3–16 characters)                    |
-| CORS                  | Configured to frontend origin only                           |
+| CORS                  | Configured to frontend origin only via `FRONTEND_ORIGIN` env var |
 
 ---
 

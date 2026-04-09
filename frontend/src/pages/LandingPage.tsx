@@ -125,15 +125,12 @@ export default function LandingPage() {
 
         {/* Hero */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ y: -16 }}
+          animate={{ y: 0 }}
           transition={{ type: 'spring', stiffness: 280, damping: 24 }}
           style={{ textAlign: 'center' }}
         >
-          <motion.h1
-            initial={{ opacity: 0, letterSpacing: '0.3em' }}
-            animate={{ opacity: 1, letterSpacing: '-0.01em' }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          <h1
             style={{
               fontSize: 'clamp(2.25rem, 8vw, 3.5rem)',
               fontWeight: 800,
@@ -146,11 +143,8 @@ export default function LandingPage() {
               color: 'var(--p2-primary)',
               textShadow: '0 0 32px rgba(234,88,12,0.5)',
             }}>Gulp</span>
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.5 }}
+          </h1>
+          <p
             style={{
               color: 'var(--text-muted)',
               fontSize: '0.95rem',
@@ -161,14 +155,14 @@ export default function LandingPage() {
           >
             Stack larger pieces to gulp smaller ones.
             Get three in a row to win.
-          </motion.p>
+          </p>
         </motion.div>
 
         {/* Card */}
         <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.1 }}
+          initial={{ y: 20, scale: 0.97 }}
+          animate={{ y: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.06 }}
           style={{
             width: '100%',
             background: 'rgba(20,28,51,0.8)',
@@ -182,32 +176,26 @@ export default function LandingPage() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Name input */}
-            <motion.div
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <input
-                type="text"
-                placeholder="Your display name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                maxLength={16}
-                style={inputStyle}
-                onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--p1-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.15)'; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
-              />
-            </motion.div>
+            <input
+              type="text"
+              placeholder="Your display name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={16}
+              style={inputStyle}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--p1-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.15)'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
+            />
 
             {/* Mode toggle / join input */}
             <AnimatePresence mode="wait">
               {mode === 'idle' ? (
                 <motion.div
                   key="idle"
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.18 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
                   style={{ display: 'flex', gap: '0.75rem' }}
                 >
                   <motion.button
@@ -248,10 +236,10 @@ export default function LandingPage() {
               ) : (
                 <motion.div
                   key="join"
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.18 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
                   style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
                 >
                   <input
@@ -321,10 +309,7 @@ export default function LandingPage() {
         </motion.div>
 
         {/* Rules */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
+        <div
           style={{
             display: 'flex',
             gap: '1.5rem',
@@ -345,7 +330,7 @@ export default function LandingPage() {
               <span style={{ lineHeight: 1.3 }}>{rule}</span>
             </div>
           ))}
-        </motion.div>
+        </div>
       </div>
     </main>
   );

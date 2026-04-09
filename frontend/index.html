@@ -10,6 +10,20 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      function showError(msg) {
+        var root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = '<div style="color:#f87171;background:#0a0f1e;min-height:100vh;padding:2rem;font-family:monospace;white-space:pre-wrap;font-size:13px;">' + String(msg) + '</div>';
+        }
+      }
+      window.onerror = function(msg, src, line, col, err) {
+        showError((err && err.stack) || msg);
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        showError(e.reason && e.reason.stack || e.reason);
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

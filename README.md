@@ -4,6 +4,9 @@ A realtime online multiplayer twist on tic-tac-toe. Stack larger pieces on top o
 
 **Stack:** React · Node.js · Socket.IO · TypeScript · Vite · Zustand
 
+**Backend:** `https://api.tic-tac-gulp.d3nizg.dev` (Railway) — deployment config in place  
+**Frontend:** `https://tic-tac-gulp.d3nizg.dev` — coming in Phase 3
+
 ---
 
 ## Game Rules (Quick Version)
@@ -25,7 +28,7 @@ tic-tac-gulp/
 ├── shared/      Pure game logic (types, rules, move validation, win detection)
 ├── backend/     Node.js + Express + Socket.IO server
 ├── frontend/    React + Vite + Zustand client
-└── docs/        Architecture, API spec, game rules, state model
+└── docs/        Architecture, API spec, game rules, state model, deployment
 ```
 
 ---
@@ -43,7 +46,17 @@ tic-tac-gulp/
 npm install
 ```
 
-### Run (both frontend + backend)
+### Environment
+
+```bash
+# Backend (optional — defaults shown)
+cp backend/.env.example backend/.env
+
+# Frontend (optional — Vite proxy handles local API calls)
+cp frontend/.env.example frontend/.env.local
+```
+
+### Run (frontend + backend together)
 
 ```bash
 npm run dev
@@ -52,13 +65,10 @@ npm run dev
 - Frontend: http://localhost:3000
 - Backend:  http://localhost:3001
 
-To run separately:
+Run separately:
 
 ```bash
-# Backend only
 npm run dev -w backend
-
-# Frontend only
 npm run dev -w frontend
 ```
 
@@ -66,11 +76,9 @@ npm run dev -w frontend
 
 ```bash
 npm test
-# or run with watch mode
-npm run test:watch -w shared
 ```
 
-Tests cover all shared game logic: move validation, win detection, draw detection, turn management, and edge cases.
+29 unit tests covering all game logic — move validation, win detection, draw detection, stacking rules, edge cases.
 
 ---
 
@@ -78,59 +86,59 @@ Tests cover all shared game logic: move validation, win detection, draw detectio
 
 ### Backend
 
-| Variable          | Default                    | Description                       |
-|---|---|---|
-| `PORT`            | `3001`                     | HTTP server port                  |
-| `FRONTEND_ORIGIN` | `http://localhost:3000`    | CORS allowed origin               |
-| `REDIS_URL`       | *(none — uses in-memory)*  | Redis connection string (Phase 4) |
+| Variable          | Default                  | Description                                   |
+|-------------------|--------------------------|-----------------------------------------------|
+| `PORT`            | `3001`                   | Set automatically by Railway — do not override|
+| `FRONTEND_ORIGIN` | `http://localhost:3000`  | Comma-separated allowed CORS origins          |
+| `NODE_ENV`        | *(unset)*                | Set to `production` on Railway                |
+| `REDIS_URL`       | *(unset)*                | Add Railway Redis addon in Phase 4            |
 
 ### Frontend
 
-| Variable          | Default | Description                          |
-|---|---|---|
-| `VITE_SOCKET_URL` | `''`    | Socket.IO server URL (empty = proxy) |
-
-Create a `.env` file in `backend/` for local overrides.
+| Variable          | Default | Description                                         |
+|-------------------|---------|-----------------------------------------------------|
+| `VITE_SOCKET_URL` | `''`    | Backend URL (empty = Vite proxy; set in production) |
 
 ---
 
 ## Documentation
 
-| Document                                    | Contents                                  |
+| Document | Contents |
 |---|---|
-| [`docs/game-rules.md`](docs/game-rules.md)         | Full ruleset with edge cases              |
-| [`docs/state-model.md`](docs/state-model.md)       | TypeScript interfaces and lifecycle       |
-| [`docs/api-spec.md`](docs/api-spec.md)             | REST and WebSocket API reference          |
-| [`docs/architecture.md`](docs/architecture.md)     | Stack, data flow, security, scaling       |
-| [`docs/multiplayer-flow.md`](docs/multiplayer-flow.md) | Sequence diagrams for all flows       |
+| [`docs/game-rules.md`](docs/game-rules.md) | Full ruleset, piece inventory, turn structure, win/draw conditions, edge cases |
+| [`docs/state-model.md`](docs/state-model.md) | TypeScript interfaces and state lifecycle |
+| [`docs/api-spec.md`](docs/api-spec.md) | REST endpoints and WebSocket event reference |
+| [`docs/architecture.md`](docs/architecture.md) | Monorepo structure, data flow, server authority model, scaling path |
+| [`docs/multiplayer-flow.md`](docs/multiplayer-flow.md) | Sequence diagrams: room creation, moves, disconnect/reconnect, rematch |
+| [`docs/deployment.md`](docs/deployment.md) | Railway setup, DNS config, env vars, Redis upgrade path |
 
 ---
 
 ## Tech Stack
 
-| Layer              | Technology                     |
-|---|---|
-| Frontend           | React 18 + TypeScript + Vite   |
-| State              | Zustand                        |
-| Realtime (client)  | socket.io-client               |
-| Backend            | Node.js + Express + TypeScript |
-| Realtime (server)  | Socket.IO 4                    |
-| Shared logic       | Pure TypeScript (no deps)      |
-| Testing            | Vitest                         |
-| Hosting (target)   | Railway.app                    |
+| Layer             | Technology                     |
+|-------------------|--------------------------------|
+| Frontend          | React 18 + TypeScript + Vite   |
+| State             | Zustand                        |
+| Realtime (client) | socket.io-client               |
+| Backend           | Node.js + Express + TypeScript |
+| Realtime (server) | Socket.IO 4                    |
+| Shared logic      | Pure TypeScript (no deps)      |
+| Testing           | Vitest                         |
+| Hosting           | Railway.app                    |
 
 ---
 
 ## Delivery Phases
 
-| Phase | Goal                     | Status  |
-|---|---|---|
-| 0     | Planning & spec          | ✅ Done |
-| 1     | Local prototype + tests  | 🔄 In progress |
-| 2     | Multiplayer foundation   | Pending |
-| 3     | Gameplay polish          | Pending |
-| 4     | Persistence & reliability| Pending |
-| 5     | Deployment & E2E testing | Pending |
+| Phase | Goal                       | Status       |
+|-------|----------------------------|--------------|
+| 0     | Planning & spec            | ✅ Done      |
+| 1     | Shared game logic + tests  | ✅ Done (29 tests passing) |
+| 2     | Multiplayer backend        | ✅ Done (Socket.IO, rooms, reconnect, forfeit) |
+| 3     | Gameplay polish + frontend | 🔄 Next      |
+| 4     | Redis persistence          | Pending      |
+| 5     | E2E testing + deployment   | Pending      |
 
 ---
 

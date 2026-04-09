@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "test": "npm run test -w shared",
-    "build": "npm run build -w shared && npm run build -w backend && npm run build -w frontend"
+    "build": "npm run build -w backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

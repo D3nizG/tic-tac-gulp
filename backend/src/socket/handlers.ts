@@ -12,8 +12,6 @@ import {
 import type { MoveEvent, PlayerId } from '@tic-tac-gulp/shared';
 import { roomStore } from '../store/roomStore.js';
 
-const FORFEIT_TIMEOUT_MS = 60_000; // 60 seconds
-
 /** Strips server-private fields before sending state to clients. */
 function sanitizeState(state: ReturnType<typeof roomStore.get>) {
   if (!state) return null;
@@ -26,7 +24,11 @@ function sanitizeState(state: ReturnType<typeof roomStore.get>) {
   };
 }
 
-export function registerSocketHandlers(io: Server) {
+export function registerSocketHandlers(
+  io: Server,
+  options: { forfeitTimeoutMs?: number } = {}
+) {
+  const FORFEIT_TIMEOUT_MS = options.forfeitTimeoutMs ?? 60_000;
   io.on('connection', (socket: Socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 

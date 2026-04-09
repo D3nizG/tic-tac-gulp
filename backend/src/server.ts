@@ -10,7 +10,7 @@ import { registerSocketHandlers } from './socket/handlers.js';
 const rawOrigin = process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
 const ALLOWED_ORIGINS = rawOrigin.split(',').map((o) => o.trim());
 
-export function createServer() {
+export function createServer(options: { forfeitTimeoutMs?: number } = {}) {
   const app = express();
   const httpServer = createHttpServer(app);
 
@@ -31,7 +31,7 @@ export function createServer() {
   app.use('/api/rooms', roomsRouter);
 
   // WebSocket handlers
-  registerSocketHandlers(io);
+  registerSocketHandlers(io, { forfeitTimeoutMs: options.forfeitTimeoutMs });
 
   return { app, httpServer, io };
 }

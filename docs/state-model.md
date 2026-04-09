@@ -106,8 +106,8 @@ interface GameState {
 
 ```
 WAITING ──► LOBBY ──► IN_PROGRESS ──► ENDED
-             ▲                           │
-             └───────── rematch ─────────┘
+                           ▲              │
+                           └── rematch ───┘
 ```
 
 | Status       | Meaning                                              |

@@ -23,7 +23,7 @@ Go to your Railway service → **Variables** tab and add:
 |-------------------|--------------------------------------------------------------------------|-----------------------------------|
 | `FRONTEND_ORIGIN` | `https://tic-tac-gulp.d3nizg.dev,http://localhost:3000`                  | Update when frontend URL is set   |
 | `NODE_ENV`        | `production`                                                             |                                   |
-| `PORT`            | *(do not set — Railway injects this automatically)*                      |                                   |
+| `PORT`            | `3001`                                                                   | Must match custom domain targetPort in Railway networking settings |
 
 ### 3. How Railway builds and starts
 
@@ -75,7 +75,7 @@ curl -X POST https://api.tic-tac-gulp.d3nizg.dev/api/rooms \
 
 | Variable          | Default                  | Description                                        |
 |-------------------|--------------------------|----------------------------------------------------|
-| `PORT`            | `3001`                   | Set automatically by Railway — do not override     |
+| `PORT`            | `3001`                   | Must match Railway custom domain targetPort (set to `3001` in Railway Variables) |
 | `FRONTEND_ORIGIN` | `http://localhost:3000`  | Comma-separated allowed CORS origins               |
 | `NODE_ENV`        | *(unset)*                | Set to `production` on Railway                     |
 | `REDIS_URL`       | *(unset)*                | Add Railway Redis addon in Phase 4 for persistence |

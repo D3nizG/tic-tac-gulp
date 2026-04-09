@@ -211,9 +211,8 @@ status → ENDED               → rematch or leave
 | Wrong-turn moves      | `moveIndex` must equal `state.moveCount`; turn checked       |
 | Duplicate submissions | `moveIndex` idempotency check                                |
 | Session spoofing      | `sessionId` is a server-generated UUID; not guessable        |
-| Room spam             | Rate-limit `POST /api/rooms` to 5/min per IP                 |
-| Stale rooms           | Redis TTL of 2 hours; in-memory rooms cleaned up on end      |
-| XSS / injection       | Display names validated (3–16 chars, no special chars)       |
+| Stale rooms           | Redis TTL of 2 hours (Phase 4); in-memory rooms cleared on game end |
+| XSS / injection       | Display names validated (3–16 characters)                    |
 | CORS                  | Configured to frontend origin only                           |
 
 ---

@@ -11,7 +11,7 @@ const STEPS = [
   {
     id: 'pieces',
     title: 'Your Pieces',
-    subtitle: 'Each player gets 3 Small, 2 Medium, and 1 Large.',
+    subtitle: 'Each player gets 3 Small, 3 Medium, and 3 Large — 9 total.',
     content: <PiecesStep />,
   },
   {
@@ -272,8 +272,8 @@ function GoalStep() {
 function PiecesStep() {
   const sizes: Array<{ label: string; r: number; count: number }> = [
     { label: 'Small', r: 14, count: 3 },
-    { label: 'Medium', r: 22, count: 2 },
-    { label: 'Large', r: 30, count: 1 },
+    { label: 'Medium', r: 22, count: 3 },
+    { label: 'Large', r: 30, count: 3 },
   ];
   return (
     <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -285,18 +285,23 @@ function PiecesStep() {
           transition={{ delay: si * 0.1, type: 'spring', stiffness: 360, damping: 22 }}
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.625rem' }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
-            {Array.from({ length: count }).map((_, pi) => (
-              <div
-                key={pi}
-                style={{
-                  width: r * 2, height: r * 2, borderRadius: '50%',
+          {/* Show one representative piece + ×3 label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+            <div style={{
+              width: r * 2, height: r * 2, borderRadius: '50%',
+              background: 'var(--p1-primary)',
+              boxShadow: `0 0 ${r}px rgba(37,99,235,0.5)`,
+            }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {[0.9, 0.65, 0.45].map((op, pi) => (
+                <div key={pi} style={{
+                  width: r * 1.4, height: r * 1.4, borderRadius: '50%',
                   background: 'var(--p1-primary)',
-                  boxShadow: `0 0 ${r}px rgba(37,99,235,0.4)`,
-                  opacity: 1 - pi * 0.15,
-                }}
-              />
-            ))}
+                  opacity: op,
+                  boxShadow: `0 0 ${r * 0.5}px rgba(37,99,235,0.3)`,
+                }} />
+              ))}
+            </div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-display)' }}>

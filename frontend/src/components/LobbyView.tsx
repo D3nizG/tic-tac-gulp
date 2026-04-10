@@ -2,11 +2,15 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useGameStore } from '../stores/gameStore.js';
 import { emitStartGame } from '../stores/socketStore.js';
+import HowToPlayOverlay from './HowToPlayOverlay.js';
+import FriendsPanel from './FriendsPanel.js';
 
 export default function LobbyView() {
   const gameState = useGameStore((s) => s.gameState);
   const yourPlayerId = useGameStore((s) => s.yourPlayerId);
   const [copied, setCopied] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
 
   if (!gameState) return null;
 
@@ -22,6 +26,13 @@ export default function LobbyView() {
   }
 
   return (
+    <>
+    <AnimatePresence>
+      {showHowToPlay && <HowToPlayOverlay onClose={() => setShowHowToPlay(false)} />}
+    </AnimatePresence>
+    <AnimatePresence>
+      {showFriends && <FriendsPanel roomCode={roomCode} onClose={() => setShowFriends(false)} />}
+    </AnimatePresence>
     <main style={{
       display: 'flex',
       flexDirection: 'column',
@@ -37,7 +48,7 @@ export default function LobbyView() {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-        style={{ textAlign: 'center' }}
+        style={{ textAlign: 'center', position: 'relative' }}
       >
         <h1 style={{
           fontSize: '1.75rem',
@@ -51,6 +62,34 @@ export default function LobbyView() {
         <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.4rem' }}>
           Waiting for players to join
         </p>
+        {/* How to play button */}
+        <button
+          onClick={() => setShowHowToPlay(true)}
+          title="How to play"
+          style={{
+            position: 'absolute', top: 0, right: '-2.5rem',
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: 'var(--text-muted)',
+            borderRadius: '50%', width: '1.875rem', height: '1.875rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
+            fontFamily: 'var(--font-display)',
+            transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(37,99,235,0.18)';
+            e.currentTarget.style.borderColor = 'rgba(37,99,235,0.5)';
+            e.currentTarget.style.color = 'var(--text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
+        >
+          ?
+        </button>
       </motion.div>
 
       {/* Room code */}
@@ -84,26 +123,46 @@ export default function LobbyView() {
           }}>
             {roomCode}
           </span>
-          <motion.button
-            onClick={copyCode}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            animate={{
-              background: copied ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.05)',
-              borderColor: copied ? 'rgba(34,197,94,0.5)' : 'var(--border)',
-              color: copied ? '#4ade80' : 'var(--text-muted)',
-            }}
-            style={{
-              padding: '0.4rem 0.875rem',
-              borderRadius: '0.5rem',
-              border: '1px solid',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            {copied ? 'Copied!' : 'Copy'}
-          </motion.button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <motion.button
+              onClick={copyCode}
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.94 }}
+              animate={{
+                background: copied ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.05)',
+                borderColor: copied ? 'rgba(34,197,94,0.5)' : 'var(--border)',
+                color: copied ? '#4ade80' : 'var(--text-muted)',
+              }}
+              style={{
+                padding: '0.4rem 0.875rem',
+                borderRadius: '0.5rem',
+                border: '1px solid',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </motion.button>
+            <motion.button
+              onClick={() => setShowFriends(true)}
+              whileHover={{ scale: 1.06 }}
+              whileTap={{ scale: 0.94 }}
+              style={{
+                padding: '0.4rem 0.875rem',
+                borderRadius: '0.5rem',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.05)',
+                color: 'var(--text-muted)',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'var(--font-display)',
+              }}
+            >
+              Friends
+            </motion.button>
+          </div>
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>
           Share this code with your opponent
@@ -210,6 +269,7 @@ export default function LobbyView() {
         )}
       </motion.div>
     </main>
+    </>
   );
 }
 

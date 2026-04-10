@@ -94,6 +94,96 @@ usersRouter.put('/me', requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/users/search?q=<query>
+ * Search users by username prefix (min 2 chars, max 10 results).
+ * Excludes self and existing friends.
+ */
+usersRouter.get('/search', optionalAuth, async (req, res) => {
+  const supabase = getSupabase();
+  if (!supabase) { res.status(503).json({ error: 'Database not configured.' }); return; }
+
+  const q = (req.query.q as string | undefined)?.trim() ?? '';
+  if (q.length < 2) { res.json([]); return; }
+
+  let query = supabase
+    .from('users')
+    .select('id, username, avatar_url')
+    .ilike('username', `${q}%`)
+    .limit(10);
+
+  if (req.userId) {
+    query = query.neq('id', req.userId);
+  }
+
+  const { data, error } = await query;
+  if (error) { res.status(500).json({ error: error.message }); return; }
+
+  // Enrich with elo
+  const ids = (data ?? []).map((u) => u.id);
+  const { data: ratings } = ids.length
+    ? await supabase.from('ratings').select('user_id, elo').in('user_id', ids)
+    : { data: [] };
+  const ratingMap = Object.fromEntries((ratings ?? []).map((r) => [r.user_id, r.elo]));
+
+  res.json((data ?? []).map((u) => ({ ...u, elo: ratingMap[u.id] ?? 1200 })));
+});
+
+/**
+ * GET /api/users/:username/matches?limit=10&offset=0
+ * Recent match history for a user.
+ */
+usersRouter.get('/:username/matches', optionalAuth, async (req, res) => {
+  const supabase = getSupabase();
+  if (!supabase) { res.status(503).json({ error: 'Database not configured.' }); return; }
+
+  const { data: user } = await supabase
+    .from('users')
+    .select('id')
+    .eq('username', req.params.username)
+    .single();
+
+  if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
+
+  const limit = Math.min(Number(req.query.limit ?? 10), 50);
+  const offset = Number(req.query.offset ?? 0);
+
+  const { data: matches, error } = await supabase
+    .from('matches')
+    .select('id, p1_user_id, p2_user_id, winner_user_id, end_reason, move_count, duration_ms, played_at')
+    .or(`p1_user_id.eq.${user.id},p2_user_id.eq.${user.id}`)
+    .order('played_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) { res.status(500).json({ error: error.message }); return; }
+
+  // Resolve opponent usernames
+  const opponentIds = (matches ?? []).map((m) =>
+    m.p1_user_id === user.id ? m.p2_user_id : m.p1_user_id
+  ).filter(Boolean) as string[];
+
+  const { data: opponents } = opponentIds.length
+    ? await supabase.from('users').select('id, username').in('id', opponentIds)
+    : { data: [] };
+  const opMap = Object.fromEntries((opponents ?? []).map((u) => [u.id, u.username]));
+
+  res.json(
+    (matches ?? []).map((m) => {
+      const opponentId = m.p1_user_id === user.id ? m.p2_user_id : m.p1_user_id;
+      const result = m.winner_user_id === user.id ? 'W' : m.winner_user_id === null ? 'D' : 'L';
+      return {
+        id: m.id,
+        opponentUsername: opponentId ? opMap[opponentId] ?? null : null,
+        result,
+        endReason: m.end_reason,
+        moveCount: m.move_count,
+        durationMs: m.duration_ms,
+        playedAt: m.played_at,
+      };
+    })
+  );
+});
+
+/**
  * GET /api/users/:username
  * Public profile lookup by username.
  */

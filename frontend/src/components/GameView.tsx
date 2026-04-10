@@ -10,6 +10,7 @@ import GameTimer from './GameTimer.js';
 import ResignButton from './ResignButton.js';
 import ChatPanel from './ChatPanel.js';
 import OpponentOverlay from './OpponentOverlay.js';
+import HowToPlayOverlay from './HowToPlayOverlay.js';
 import type { PlayerId } from '@tic-tac-gulp/shared';
 
 export default function GameView() {
@@ -17,6 +18,7 @@ export default function GameView() {
   const yourPlayerId = useGameStore((s) => s.yourPlayerId);
   const lastMoveError = useGameStore((s) => s.lastMoveError);
   const [showOpponentOverlay, setShowOpponentOverlay] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   if (!gameState || !yourPlayerId) return null;
 
@@ -33,6 +35,9 @@ export default function GameView() {
       overflow: 'hidden',
       position: 'relative',
     }}>
+      <AnimatePresence>
+        {showHowToPlay && <HowToPlayOverlay onClose={() => setShowHowToPlay(false)} />}
+      </AnimatePresence>
       {/* Disconnect/reconnect banner */}
       <ConnectionBanner />
 
@@ -67,6 +72,33 @@ export default function GameView() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <TurnBadge />
           <GameTimer />
+          <button
+            onClick={() => setShowHowToPlay(true)}
+            title="How to play"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--text-muted)',
+              borderRadius: '50%', width: '1.625rem', height: '1.625rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+              fontFamily: 'var(--font-display)',
+              flexShrink: 0,
+              transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(37,99,235,0.18)';
+              e.currentTarget.style.borderColor = 'rgba(37,99,235,0.5)';
+              e.currentTarget.style.color = 'var(--text)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }}
+          >
+            ?
+          </button>
         </div>
 
         {lastMoveError && (

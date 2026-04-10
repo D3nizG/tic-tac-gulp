@@ -5,6 +5,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import cors from 'cors';
 import { roomsRouter } from './routes/rooms.js';
 import { usersRouter } from './routes/users.js';
+import { friendsRouter } from './routes/friends.js';
+import { invitesRouter } from './routes/invites.js';
 import { registerSocketHandlers } from './socket/handlers.js';
 import { getRedis, getRedisSubscriber } from './lib/redis.js';
 import { roomStore } from './store/roomStore.js';
@@ -42,6 +44,8 @@ export function createServer(options: { forfeitTimeoutMs?: number } = {}) {
   // REST routes
   app.use('/api/rooms', roomsRouter);
   app.use('/api/users', usersRouter);
+  app.use('/api/friends', friendsRouter);
+  app.use('/api/invites', invitesRouter);
 
   // WebSocket handlers
   registerSocketHandlers(io, { forfeitTimeoutMs: options.forfeitTimeoutMs });

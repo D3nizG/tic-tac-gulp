@@ -66,6 +66,8 @@ export interface GameState {
   updatedAt: number;       // epoch ms
   gameStartedAt: number | null;  // epoch ms — set when status transitions to IN_PROGRESS
   turnStartedAt: number | null;  // epoch ms — reset after each move; drives per-turn countdown
+  /** True when this room can be filled by the public "find game" queue. */
+  isPublic?: boolean;
 }
 
 // ─── Move ─────────────────────────────────────────────────────────────────────

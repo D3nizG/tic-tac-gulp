@@ -20,6 +20,7 @@ beforeAll(async () => {
   const { app, httpServer: s, io } = createServer({
     forfeitTimeoutMs: FORFEIT_MS,
     startingPlayer: 'P1',
+    publicMatchStartDelayMs: 20,
   });
   httpServer = s;
   ioServer = io;
@@ -196,6 +197,93 @@ describe('room:join', () => {
     }
   });
 
+  it('preserves the HTTP-joined P2 userId when their socket joins', async () => {
+    const p2UserId = '00000000-0000-0000-0000-000000000222';
+    const createRes = await request.post('/api/rooms').send({ displayName: 'Alice' });
+    const { roomCode, sessionId: p1Session } = createRes.body;
+    const joinRes = await request
+      .post(`/api/rooms/${roomCode}/join`)
+      .send({ displayName: 'Bob' });
+    const { sessionId: p2Session } = joinRes.body;
+    const reserved = roomStore.get(roomCode)!;
+    roomStore.set(roomCode, {
+      ...reserved,
+      players: {
+        ...reserved.players,
+        P2: { ...reserved.players.P2, userId: p2UserId },
+      },
+    });
+
+    const [p1Socket, p2Socket] = await Promise.all([connectSocket(), connectSocket()]);
+    try {
+      const p1Joined = waitForEvent(p1Socket, 'room:joined');
+      p1Socket.emit('room:join', { sessionId: p1Session, roomCode, displayName: 'Alice', playerId: 'P1' });
+      await p1Joined;
+
+      const p2Joined = waitForEvent(p2Socket, 'room:joined');
+      p2Socket.emit('room:join', { sessionId: p2Session, roomCode, displayName: 'Bob', playerId: 'P2' });
+      await p2Joined;
+
+      expect(roomStore.get(roomCode)?.players.P2.userId).toBe(p2UserId);
+    } finally {
+      p1Socket.disconnect();
+      p2Socket.disconnect();
+    }
+  });
+
+  it('keeps a private pregame lobby open for the remaining player when the opponent leaves', async () => {
+    const { roomCode, p1Socket, p2Socket } = await setupRoom();
+    try {
+      const updatedPromise = waitForEvent<any>(p1Socket, 'room:updated');
+      p2Socket.disconnect();
+      const updated = await updatedPromise;
+
+      expect(updated.gameState.status).toBe('WAITING');
+      expect(updated.gameState.players.P2.displayName).toBe('');
+      expect(roomStore.get(roomCode)?.status).toBe('WAITING');
+    } finally {
+      p1Socket.disconnect();
+      p2Socket.disconnect();
+    }
+  });
+
+  it('auto-starts a public matchmaking room after both players socket-join', async () => {
+    const first = await request.post('/api/rooms/search').send({ displayName: 'Alice' });
+    const { roomCode, sessionId: p1Session } = first.body;
+
+    const p1Socket = await connectSocket();
+    try {
+      const p1Joined = waitForEvent(p1Socket, 'room:joined');
+      p1Socket.emit('room:join', { sessionId: p1Session, roomCode, displayName: 'Alice', playerId: 'P1' });
+      await p1Joined;
+
+      const second = await request.post('/api/rooms/search').send({ displayName: 'Bob' });
+      expect(second.body.roomCode).toBe(roomCode);
+      const { sessionId: p2Session } = second.body;
+
+      const p2Socket = await connectSocket();
+      try {
+        const p2Joined = waitForEvent(p2Socket, 'room:joined');
+        const p1Matched = waitForEvent<any>(p1Socket, 'room:updated');
+        const p2Matched = waitForEvent<any>(p2Socket, 'room:updated');
+        const p1Started = waitForEvent<any>(p1Socket, 'game:started');
+        const p2Started = waitForEvent<any>(p2Socket, 'game:started');
+        p2Socket.emit('room:join', { sessionId: p2Session, roomCode, displayName: 'Bob', playerId: 'P2' });
+        await p2Joined;
+        const [p1Match, p2Match] = await Promise.all([p1Matched, p2Matched]);
+        const [started] = await Promise.all([p1Started, p2Started]);
+
+        expect(p1Match.gameState.status).toBe('LOBBY');
+        expect(p2Match.gameState.status).toBe('LOBBY');
+        expect(started.gameState.status).toBe('IN_PROGRESS');
+      } finally {
+        p2Socket.disconnect();
+      }
+    } finally {
+      p1Socket.disconnect();
+    }
+  });
+
   it('unknown room returns error event', async () => {
     const socket = await connectSocket();
     try {
@@ -233,7 +321,15 @@ describe('room:join', () => {
 
 describe('room:rejoin', () => {
   it('reconnected player receives full game state', async () => {
-    const { roomCode, p1Session, p1Socket, p2Socket } = await setupRoom();
+    const { roomCode, p1Session, p1Socket, p2Socket } = await setupGame();
+    const state = roomStore.get(roomCode)!;
+    roomStore.set(roomCode, {
+      ...state,
+      players: {
+        P1: { ...state.players.P1, userId: '00000000-0000-0000-0000-000000000001' },
+        P2: { ...state.players.P2, userId: '00000000-0000-0000-0000-000000000002' },
+      },
+    });
     try {
       p1Socket.disconnect();
 

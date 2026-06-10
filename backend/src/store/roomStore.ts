@@ -67,6 +67,19 @@ export const roomStore = {
     return rooms.has(roomCode);
   },
 
+  /** Finds an open public room that can accept a second player. */
+  findOpenPublicRoom(options: { excludeUserId?: string | null } = {}): GameState | undefined {
+    for (const state of rooms.values()) {
+      if (!state.isPublic) continue;
+      if (state.status !== 'WAITING') continue;
+      if (state.players.P2.sessionId) continue;
+      if (!state.players.P1.connected) continue;
+      if (options.excludeUserId && state.players.P1.userId === options.excludeUserId) continue;
+      return state;
+    }
+    return undefined;
+  },
+
   /** Associates a session with a room for reconnect lookups. */
   bindSession(sessionId: string, roomCode: string): void {
     sessionToRoom.set(sessionId, roomCode);

@@ -15,9 +15,32 @@ import type { PlayerId } from '@tic-tac-gulp/shared';
 // Supports a comma-separated list of origins, e.g.:
 // FRONTEND_ORIGIN=https://tic-tac-gulp.d3nizg.dev,http://localhost:3000
 const rawOrigin = process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
-const ALLOWED_ORIGINS = rawOrigin.split(',').map((o) => o.trim());
+const ALLOWED_ORIGINS = expandLocalOrigins(rawOrigin.split(',').map((o) => o.trim()));
 
-export function createServer(options: { forfeitTimeoutMs?: number; startingPlayer?: PlayerId } = {}) {
+function expandLocalOrigins(origins: string[]): string[] {
+  const expanded = new Set<string>();
+  for (const origin of origins) {
+    if (!origin) continue;
+    expanded.add(origin);
+    try {
+      const url = new URL(origin);
+      if (url.hostname === 'localhost') {
+        url.hostname = '127.0.0.1';
+        expanded.add(url.toString().replace(/\/$/, ''));
+      } else if (url.hostname === '127.0.0.1') {
+        url.hostname = 'localhost';
+        expanded.add(url.toString().replace(/\/$/, ''));
+      }
+    } catch {
+      // Ignore malformed origins; cors/socket.io will reject them normally.
+    }
+  }
+  return [...expanded];
+}
+
+export function createServer(
+  options: { forfeitTimeoutMs?: number; startingPlayer?: PlayerId; publicMatchStartDelayMs?: number } = {}
+) {
   const app = express();
   const httpServer = createHttpServer(app);
 
@@ -52,6 +75,7 @@ export function createServer(options: { forfeitTimeoutMs?: number; startingPlaye
   registerSocketHandlers(io, {
     forfeitTimeoutMs: options.forfeitTimeoutMs,
     startingPlayer: options.startingPlayer,
+    publicMatchStartDelayMs: options.publicMatchStartDelayMs,
   });
 
   // Restore persisted rooms from Redis (runs async after server setup)

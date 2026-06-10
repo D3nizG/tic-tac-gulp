@@ -20,6 +20,8 @@ export default function LobbyView() {
   const { players, roomCode } = gameState;
   const p2Joined = players.P2.displayName !== '';
   const canStart = p2Joined;
+  const publicWaiting = Boolean(gameState.isPublic && !p2Joined);
+  const publicMatched = Boolean(gameState.isPublic && p2Joined);
 
   function copyCode() {
     navigator.clipboard.writeText(roomCode).catch(() => {});
@@ -44,6 +46,12 @@ export default function LobbyView() {
     <AnimatePresence>
       {showFriends && <FriendsPanel roomCode={roomCode} onClose={() => setShowFriends(false)} />}
     </AnimatePresence>
+    {publicMatched ? (
+      <MatchFoundView
+        p1Name={players.P1.displayName}
+        p2Name={players.P2.displayName}
+      />
+    ) : (
     <main style={{
       display: 'flex',
       flexDirection: 'column',
@@ -68,10 +76,10 @@ export default function LobbyView() {
           letterSpacing: '-0.01em',
           margin: 0,
         }}>
-          Lobby
+          {publicWaiting ? 'Finding Game' : 'Lobby'}
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.4rem' }}>
-          Waiting for players to join
+          {publicWaiting ? 'Finding another player' : 'Waiting for players to join'}
         </p>
         {/* How to play button */}
         <button
@@ -121,62 +129,64 @@ export default function LobbyView() {
         }}
       >
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', letterSpacing: '0.1em', textTransform: 'uppercase', margin: 0 }}>
-          Room Code
+          {publicWaiting ? 'Public Matchmaking' : 'Room Code'}
         </p>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <span style={{
-            fontSize: '2.75rem',
+            fontSize: publicWaiting ? '1.75rem' : '2.75rem',
             fontWeight: 800,
-            letterSpacing: '0.2em',
+            letterSpacing: publicWaiting ? '0.04em' : '0.2em',
             color: 'var(--highlight)',
             fontFamily: 'var(--font-display)',
             textShadow: '0 0 24px var(--highlight-glow)',
           }}>
-            {roomCode}
+            {publicWaiting ? 'Searching...' : roomCode}
           </span>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <motion.button
-              onClick={copyCode}
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.94 }}
-              animate={{
-                background: copied ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.05)',
-                borderColor: copied ? 'rgba(34,197,94,0.5)' : 'var(--border)',
-                color: copied ? '#4ade80' : 'var(--text-muted)',
-              }}
-              style={{
-                padding: '0.4rem 0.875rem',
-                borderRadius: '0.5rem',
-                border: '1px solid',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </motion.button>
-            <motion.button
-              onClick={() => setShowFriends(true)}
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.94 }}
-              style={{
-                padding: '0.4rem 0.875rem',
-                borderRadius: '0.5rem',
-                border: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(255,255,255,0.05)',
-                color: 'var(--text-muted)',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'var(--font-display)',
-              }}
-            >
-              Friends
-            </motion.button>
-          </div>
+          {!publicWaiting && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <motion.button
+                onClick={copyCode}
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.94 }}
+                animate={{
+                  background: copied ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.05)',
+                  borderColor: copied ? 'rgba(34,197,94,0.5)' : 'var(--border)',
+                  color: copied ? '#4ade80' : 'var(--text-muted)',
+                }}
+                style={{
+                  padding: '0.4rem 0.875rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </motion.button>
+              <motion.button
+                onClick={() => setShowFriends(true)}
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.94 }}
+                style={{
+                  padding: '0.4rem 0.875rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-display)',
+                }}
+              >
+                Friends
+              </motion.button>
+            </div>
+          )}
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>
-          Share this code with your opponent
+          {publicWaiting ? 'Keep this tab open while we match you' : 'Share this code with your opponent'}
         </p>
       </motion.div>
 
@@ -273,7 +283,7 @@ export default function LobbyView() {
           </motion.button>
         ) : (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Waiting for opponent…
+            {publicWaiting ? 'Searching for opponent...' : 'Waiting for opponent…'}
           </p>
         )}
         <button
@@ -294,7 +304,126 @@ export default function LobbyView() {
         </button>
       </motion.div>
     </main>
+    )}
     </>
+  );
+}
+
+function MatchFoundView({ p1Name, p2Name }: { p1Name: string; p2Name: string }) {
+  return (
+    <main style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100dvh',
+      gap: '2rem',
+      padding: '2rem',
+      background: 'var(--bg)',
+    }}>
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+        style={{ textAlign: 'center' }}
+      >
+        <h1 style={{
+          margin: 0,
+          fontSize: '1.8rem',
+          fontWeight: 800,
+          fontFamily: 'var(--font-display)',
+        }}>
+          Match Found
+        </h1>
+        <p style={{ margin: '0.45rem 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+          Starting game
+        </p>
+      </motion.div>
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(7rem, 1fr) auto minmax(7rem, 1fr)',
+        alignItems: 'center',
+        gap: '1.25rem',
+        width: '100%',
+        maxWidth: '28rem',
+      }}>
+        <VersusPlayer name={p1Name} label="P1" color="var(--p1-primary)" glow="var(--p1-glow)" delay={0.05} />
+        <motion.div
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 360, damping: 22, delay: 0.22 }}
+          style={{
+            color: 'var(--text)',
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.35rem',
+            fontWeight: 900,
+            letterSpacing: 0,
+          }}
+        >
+          VS
+        </motion.div>
+        <VersusPlayer name={p2Name} label="P2" color="var(--p2-primary)" glow="var(--p2-glow)" delay={0.12} />
+      </div>
+    </main>
+  );
+}
+
+function VersusPlayer({
+  name,
+  label,
+  color,
+  glow,
+  delay,
+}: {
+  name: string;
+  label: string;
+  color: string;
+  glow: string;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16, scale: 0.92 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 24, delay }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '0.75rem',
+        minWidth: 0,
+      }}
+    >
+      <motion.div
+        animate={{ scale: [1, 1.08, 1] }}
+        transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
+        style={{
+          width: '4rem',
+          height: '4rem',
+          borderRadius: 10,
+          background: color,
+          boxShadow: `0 0 24px ${glow}`,
+        }}
+      />
+      <div style={{ textAlign: 'center', minWidth: 0, width: '100%' }}>
+        <p style={{
+          margin: 0,
+          color: 'var(--text)',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 800,
+          fontSize: '0.95rem',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {name}
+        </p>
+        <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+          {label}
+        </p>
+      </div>
+    </motion.div>
   );
 }
 

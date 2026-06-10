@@ -1,24 +1,33 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore.js';
 import { useFriendsStore } from '../stores/friendsStore.js';
 import { supabase, supabaseEnabled } from '../lib/supabase.js';
+import type { GameInvite } from '../stores/friendsStore.js';
 
 /**
  * Subscribes to real-time game_invites inserts for the current user
  * and renders a fixed toast in the bottom-right corner.
  */
 export default function InviteToast() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const { invites, fetchInvites, dismissInvite } = useFriendsStore();
+  const { invites, fetchInvites, acceptGameInvite, dismissInvite } = useFriendsStore();
+  const [joining, setJoining] = useState<Record<string, boolean>>({});
 
   // Subscribe to Supabase Realtime for new game invites
   useEffect(() => {
-    if (!supabaseEnabled || !user) return;
+    if (!user) return;
 
     // Initial fetch
     fetchInvites();
+
+    const poll = window.setInterval(fetchInvites, 3500);
+
+    if (!supabaseEnabled) {
+      return () => window.clearInterval(poll);
+    }
 
     const channel = supabase
       .channel(`game_invites_${user.id}`)
@@ -39,9 +48,18 @@ export default function InviteToast() {
       .subscribe();
 
     return () => {
+      window.clearInterval(poll);
       supabase.removeChannel(channel);
     };
   }, [user?.id]);
+
+  async function handleJoinInvite(invite: GameInvite) {
+    setJoining((s) => ({ ...s, [invite.id]: true }));
+    const { error, roomCode } = await acceptGameInvite(invite);
+    setJoining((s) => ({ ...s, [invite.id]: false }));
+    if (error || !roomCode) return;
+    navigate(`/room/${roomCode}`);
+  }
 
   if (invites.length === 0) return null;
 
@@ -90,19 +108,22 @@ export default function InviteToast() {
                   invited you to room <strong style={{ color: 'var(--highlight)', fontFamily: 'var(--font-display)' }}>{inv.roomCode}</strong>
                 </p>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <Link
-                    to={`/room/${inv.roomCode}`}
+                  <button
+                    onClick={() => handleJoinInvite(inv)}
+                    disabled={joining[inv.id]}
                     style={{
                       flex: 1, padding: '0.45rem 0',
                       borderRadius: '0.375rem',
+                      border: 'none',
                       background: 'linear-gradient(135deg, var(--p1-primary) 0%, #1d4ed8 100%)',
                       color: '#fff', fontWeight: 700,
-                      textDecoration: 'none', fontSize: '0.8rem',
+                      fontSize: '0.8rem',
                       textAlign: 'center', fontFamily: 'var(--font-display)',
+                      cursor: joining[inv.id] ? 'wait' : 'pointer',
                     }}
                   >
-                    Join Game
-                  </Link>
+                    {joining[inv.id] ? 'Joining...' : 'Join Game'}
+                  </button>
                   <button
                     onClick={() => dismissInvite(inv.id)}
                     style={{

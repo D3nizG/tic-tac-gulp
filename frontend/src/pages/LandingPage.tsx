@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useGameStore } from '../stores/gameStore.js';
-import { getSocket } from '../stores/socketStore.js';
+import { joinRoomSession } from '../stores/socketStore.js';
 import { useAuthStore } from '../stores/authStore.js';
 import { supabaseEnabled } from '../lib/supabase.js';
 import { useFriendsStore } from '../stores/friendsStore.js';
@@ -25,7 +24,6 @@ interface LobbyProfile {
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const setSession = useGameStore((s) => s.setSession);
 
   const [displayName, setDisplayName] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -33,7 +31,7 @@ export default function LandingPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { user, signInWithGoogle, signOut, getToken } = useAuthStore();
+  const { user, signOut, getToken, loading: authLoading } = useAuthStore();
   const { pendingIn, fetchRequests, sendGameInvite } = useFriendsStore();
   const [usernamePrompt, setUsernamePrompt] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
@@ -41,6 +39,7 @@ export default function LandingPage() {
   const [usernameLoading, setUsernameLoading] = useState(false);
   const [profile, setProfile] = useState<LobbyProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
@@ -50,13 +49,16 @@ export default function LandingPage() {
     if (!user) {
       setProfile(null);
       setProfileLoading(false);
+      setProfileChecked(true);
       setUsernamePrompt(false);
       return;
     }
     const token = getToken();
+    setProfileChecked(false);
     if (!token) {
       setProfile(null);
       setProfileLoading(false);
+      setProfileChecked(true);
       setUsernamePrompt(false);
       return;
     }
@@ -82,13 +84,18 @@ export default function LandingPage() {
         }
       })
       .catch(() => setUsernamePrompt(false))
-      .finally(() => setProfileLoading(false));
-  }, [user]);
+      .finally(() => {
+        setProfileLoading(false);
+        setProfileChecked(true);
+      });
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
     fetchRequests();
-  }, [user, fetchRequests]);
+    const interval = window.setInterval(fetchRequests, 3500);
+    return () => window.clearInterval(interval);
+  }, [user?.id, fetchRequests]);
 
   async function handleSetUsername() {
     const trimmed = usernameInput.trim();
@@ -129,26 +136,11 @@ export default function LandingPage() {
   }
 
   const effectiveDisplayName = user ? profile?.username ?? '' : displayName.trim();
-  const nameValid = user
-    ? Boolean(profile?.username && !profileLoading)
+  const nameValid = authLoading
+    ? false
+    : user
+    ? Boolean(profile?.username && profileChecked && !profileLoading)
     : displayName.trim().length >= 3 && displayName.trim().length <= 16;
-
-  function joinRoomSocket(roomCode: string, playerId: 'P1' | 'P2', sessionId: string, displayNameForGame: string) {
-    setSession(playerId, roomCode, sessionId);
-    localStorage.setItem('ttg_sessionId', sessionId);
-    localStorage.setItem('ttg_roomCode', roomCode);
-
-    const socket = getSocket();
-    const payload = { sessionId, roomCode, displayName: displayNameForGame, playerId };
-    if (socket.connected) {
-      socket.emit('room:join', payload);
-    } else {
-      socket.connect();
-      socket.once('connect', () => {
-        socket.emit('room:join', payload);
-      });
-    }
-  }
 
   async function handleCreate() {
     if (!nameValid) return;
@@ -165,7 +157,7 @@ export default function LandingPage() {
       if (!res.ok) throw new Error('Failed to create room.');
       const { roomCode, playerId, sessionId } = await res.json();
 
-      joinRoomSocket(roomCode, playerId, sessionId, displayNameForGame);
+      joinRoomSession(roomCode, playerId, sessionId, displayNameForGame);
       navigate(`/room/${roomCode}`);
     } catch (e) {
       setError(String(e));
@@ -193,7 +185,7 @@ export default function LandingPage() {
       }
       const { roomCode, playerId, sessionId } = await res.json();
 
-      joinRoomSocket(roomCode, playerId, sessionId, displayNameForGame);
+      joinRoomSession(roomCode, playerId, sessionId, displayNameForGame);
       navigate(`/room/${roomCode}`);
     } catch (e) {
       setError(String(e));
@@ -219,11 +211,35 @@ export default function LandingPage() {
       const invite = await sendGameInvite(username, roomData.roomCode);
       if (invite.error) return invite;
 
-      joinRoomSocket(roomData.roomCode, roomData.playerId, roomData.sessionId, profile.username);
+      joinRoomSession(roomData.roomCode, roomData.playerId, roomData.sessionId, profile.username);
       navigate(`/room/${roomData.roomCode}`);
       return { error: null };
     } catch {
       return { error: 'Failed to challenge friend.' };
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleFindGame() {
+    if (!nameValid) return;
+    setLoading(true);
+    setError('');
+    const token = getToken();
+    const displayNameForGame = effectiveDisplayName;
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/rooms/search`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ displayName: displayNameForGame }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? 'Failed to find a game.');
+
+      joinRoomSession(data.roomCode, data.playerId, data.sessionId, displayNameForGame);
+      navigate(`/room/${data.roomCode}`);
+    } catch (e) {
+      setError(String(e));
     } finally {
       setLoading(false);
     }
@@ -355,7 +371,7 @@ export default function LandingPage() {
           alignItems: 'flex-end',
           gap: '0.625rem',
         }}>
-          {user ? (
+          {authLoading ? null : user ? (
             <>
               <div style={{
                 display: 'flex',
@@ -527,7 +543,7 @@ export default function LandingPage() {
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {!user && (
+            {!user && !authLoading && (
               <input
                 type="text"
                 placeholder="Your display name"
@@ -539,7 +555,7 @@ export default function LandingPage() {
                 onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
               />
             )}
-            {user && !profile?.username && (
+            {user && profileChecked && !profileLoading && !profile?.username && (
               <button
                 onClick={() => setUsernamePrompt(true)}
                 style={{
@@ -564,7 +580,7 @@ export default function LandingPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.15 }}
-                  style={{ display: 'flex', gap: '0.75rem' }}
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}
                 >
                   <motion.button
                     onClick={handleCreate}
@@ -573,7 +589,7 @@ export default function LandingPage() {
                     whileTap={nameValid ? { scale: 0.97 } : {}}
                     style={{
                       ...btnStyle,
-                      flex: 1,
+                      fontSize: '0.82rem',
                       background: nameValid
                         ? 'linear-gradient(135deg, var(--p1-primary) 0%, #1d4ed8 100%)'
                         : 'rgba(37,99,235,0.2)',
@@ -582,23 +598,41 @@ export default function LandingPage() {
                       boxShadow: nameValid ? '0 0 16px rgba(37,99,235,0.35)' : 'none',
                     }}
                   >
-                    {loading ? <Spinner /> : 'Create Game'}
+                    {loading ? <Spinner /> : 'Create Private'}
                   </motion.button>
                   <motion.button
                     onClick={() => setMode('join')}
-                    disabled={!nameValid}
+                    disabled={!nameValid || loading}
+                    whileHover={nameValid && !loading ? { scale: 1.02 } : {}}
+                    whileTap={nameValid && !loading ? { scale: 0.97 } : {}}
+                    style={{
+                      ...btnStyle,
+                      fontSize: '0.82rem',
+                      background: 'transparent',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      color: nameValid ? 'var(--text)' : 'var(--text-muted)',
+                      cursor: nameValid && !loading ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Join Private
+                  </motion.button>
+                  <motion.button
+                    onClick={handleFindGame}
+                    disabled={!nameValid || loading}
                     whileHover={nameValid ? { scale: 1.02 } : {}}
                     whileTap={nameValid ? { scale: 0.97 } : {}}
                     style={{
                       ...btnStyle,
-                      flex: 1,
-                      background: 'transparent',
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      color: nameValid ? 'var(--text)' : 'var(--text-muted)',
-                      cursor: nameValid ? 'pointer' : 'not-allowed',
+                      fontSize: '0.82rem',
+                      background: nameValid
+                        ? 'linear-gradient(135deg, var(--p2-primary) 0%, #c2410c 100%)'
+                        : 'rgba(234,88,12,0.2)',
+                      color: nameValid ? '#fff' : 'rgba(255,255,255,0.35)',
+                      cursor: nameValid && !loading ? 'pointer' : 'not-allowed',
+                      boxShadow: nameValid ? '0 0 16px rgba(234,88,12,0.28)' : 'none',
                     }}
                   >
-                    Join Game
+                    {loading ? <Spinner /> : 'Find Game'}
                   </motion.button>
                 </motion.div>
               ) : (

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useAuthStore } from './authStore.js';
+import { joinRoomSession } from './socketStore.js';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
@@ -59,6 +60,7 @@ interface FriendsState {
   searchUsers: (q: string) => Promise<void>;
   clearSearch: () => void;
   sendGameInvite: (toUsername: string, roomCode: string) => Promise<{ error: string | null }>;
+  acceptGameInvite: (invite: GameInvite) => Promise<{ error: string | null; roomCode?: string }>;
   dismissInvite: (inviteId: string) => Promise<void>;
 }
 
@@ -83,6 +85,8 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
         headers: authHeaders(token),
       });
       if (res.ok) set({ friends: await res.json() });
+    } catch {
+      // Keep stale data; polling should not surface as a React error overlay.
     } finally {
       set({ loading: false });
     }
@@ -91,66 +95,90 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   fetchRequests: async () => {
     const token = getToken();
     if (!token) return;
-    const res = await fetch(`${SOCKET_URL}/api/friends/requests`, {
-      headers: authHeaders(token),
-    });
-    if (res.ok) set({ pendingIn: await res.json() });
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/friends/requests`, {
+        headers: authHeaders(token),
+      });
+      if (res.ok) set({ pendingIn: await res.json() });
+    } catch {
+      // Keep stale data; polling retries shortly.
+    }
   },
 
   fetchInvites: async () => {
     const token = getToken();
     if (!token) return;
-    const res = await fetch(`${SOCKET_URL}/api/invites`, {
-      headers: authHeaders(token),
-    });
-    if (res.ok) set({ invites: await res.json() });
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/invites`, {
+        headers: authHeaders(token),
+      });
+      if (res.ok) set({ invites: await res.json() });
+    } catch {
+      // Keep stale data; polling retries shortly.
+    }
   },
 
   sendRequest: async (username) => {
     const token = getToken();
     if (!token) return { error: 'Not signed in.' };
-    const res = await fetch(`${SOCKET_URL}/api/friends/request`, {
-      method: 'POST',
-      headers: authHeaders(token),
-      body: JSON.stringify({ username }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error ?? 'Failed to send request.' };
-    return { error: null };
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/friends/request`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ username }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error ?? 'Failed to send request.' };
+      return { error: null };
+    } catch {
+      return { error: 'Network error.' };
+    }
   },
 
   acceptRequest: async (friendshipId) => {
     const token = getToken();
     if (!token) return;
-    await fetch(`${SOCKET_URL}/api/friends/${friendshipId}/accept`, {
-      method: 'POST',
-      headers: authHeaders(token),
-    });
-    // Refresh both lists
-    await Promise.all([get().fetchFriends(), get().fetchRequests()]);
+    try {
+      await fetch(`${SOCKET_URL}/api/friends/${friendshipId}/accept`, {
+        method: 'POST',
+        headers: authHeaders(token),
+      });
+      // Refresh both lists
+      await Promise.all([get().fetchFriends(), get().fetchRequests()]);
+    } catch {
+      // Polling will retry state refresh.
+    }
   },
 
   removeOrCancel: async (friendshipId) => {
     const token = getToken();
     if (!token) return;
-    await fetch(`${SOCKET_URL}/api/friends/${friendshipId}`, {
-      method: 'DELETE',
-      headers: authHeaders(token),
-    });
-    set((s) => ({
-      friends: s.friends.filter((f) => f.friendshipId !== friendshipId),
-      pendingIn: s.pendingIn.filter((f) => f.friendshipId !== friendshipId),
-    }));
+    try {
+      await fetch(`${SOCKET_URL}/api/friends/${friendshipId}`, {
+        method: 'DELETE',
+        headers: authHeaders(token),
+      });
+      set((s) => ({
+        friends: s.friends.filter((f) => f.friendshipId !== friendshipId),
+        pendingIn: s.pendingIn.filter((f) => f.friendshipId !== friendshipId),
+      }));
+    } catch {
+      // Keep stale data; polling retries shortly.
+    }
   },
 
   searchUsers: async (q) => {
     if (q.trim().length < 2) { set({ searchResults: [] }); return; }
     const token = getToken();
-    const res = await fetch(
-      `${SOCKET_URL}/api/users/search?q=${encodeURIComponent(q.trim())}`,
-      { headers: authHeaders(token) }
-    );
-    if (res.ok) set({ searchResults: await res.json() });
+    try {
+      const res = await fetch(
+        `${SOCKET_URL}/api/users/search?q=${encodeURIComponent(q.trim())}`,
+        { headers: authHeaders(token) }
+      );
+      if (res.ok) set({ searchResults: await res.json() });
+    } catch {
+      set({ searchResults: [] });
+    }
   },
 
   clearSearch: () => set({ searchResults: [] }),
@@ -158,23 +186,67 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   sendGameInvite: async (toUsername, roomCode) => {
     const token = getToken();
     if (!token) return { error: 'Not signed in.' };
-    const res = await fetch(`${SOCKET_URL}/api/invites`, {
-      method: 'POST',
-      headers: authHeaders(token),
-      body: JSON.stringify({ toUsername, roomCode }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error ?? 'Failed to send invite.' };
-    return { error: null };
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/invites`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ toUsername, roomCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error ?? 'Failed to send invite.' };
+      return { error: null };
+    } catch {
+      return { error: 'Network error.' };
+    }
+  },
+
+  acceptGameInvite: async (invite) => {
+    const token = getToken();
+    if (!token) return { error: 'Not signed in.' };
+
+    try {
+      const profileRes = await fetch(`${SOCKET_URL}/api/users/me`, {
+        headers: authHeaders(token),
+      });
+      const profile = await profileRes.json().catch(() => ({}));
+      if (!profileRes.ok || !profile.username) {
+        return { error: profile.error ?? 'Set a username before joining.' };
+      }
+
+      const joinRes = await fetch(`${SOCKET_URL}/api/rooms/${invite.roomCode}/join`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ displayName: profile.username }),
+      });
+      const data = await joinRes.json().catch(() => ({}));
+      if (!joinRes.ok) {
+        return { error: data.error ?? 'Failed to join invite.' };
+      }
+
+      joinRoomSession(data.roomCode, data.playerId, data.sessionId, profile.username);
+      await fetch(`${SOCKET_URL}/api/invites/${invite.id}`, {
+        method: 'DELETE',
+        headers: authHeaders(token),
+      }).catch(() => {});
+      set((s) => ({ invites: s.invites.filter((i) => i.id !== invite.id) }));
+
+      return { error: null, roomCode: data.roomCode };
+    } catch {
+      return { error: 'Network error.' };
+    }
   },
 
   dismissInvite: async (inviteId) => {
     const token = getToken();
     if (!token) return;
-    await fetch(`${SOCKET_URL}/api/invites/${inviteId}`, {
-      method: 'DELETE',
-      headers: authHeaders(token),
-    });
-    set((s) => ({ invites: s.invites.filter((i) => i.id !== inviteId) }));
+    try {
+      await fetch(`${SOCKET_URL}/api/invites/${inviteId}`, {
+        method: 'DELETE',
+        headers: authHeaders(token),
+      });
+      set((s) => ({ invites: s.invites.filter((i) => i.id !== inviteId) }));
+    } catch {
+      // Keep stale data; polling retries shortly.
+    }
   },
 }));

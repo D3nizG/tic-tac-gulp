@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useFriendsStore } from '../stores/friendsStore.js';
 import { useAuthStore } from '../stores/authStore.js';
+import type { GameInvite } from '../stores/friendsStore.js';
 
 interface Props {
   roomCode?: string;
@@ -11,31 +12,53 @@ interface Props {
 }
 
 export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const {
     friends, pendingIn, invites,
-    fetchFriends, fetchRequests,
+    fetchFriends, fetchRequests, fetchInvites,
     acceptRequest, removeOrCancel,
     searchResults, searchUsers, clearSearch,
-    sendRequest, sendGameInvite, dismissInvite,
+    sendRequest, sendGameInvite, acceptGameInvite, dismissInvite,
   } = useFriendsStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
   const [requestStatus, setRequestStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
   const [inviteStatus, setInviteStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
+  const [inviteAcceptStatus, setInviteAcceptStatus] = useState<Record<string, 'joining' | 'error'>>({});
   const [challengeStatus, setChallengeStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [keepSearchResultsVisible, setKeepSearchResultsVisible] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentClearTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user) return;
     fetchFriends();
     fetchRequests();
-  }, [user]);
+    fetchInvites();
+    const interval = window.setInterval(() => {
+      fetchFriends();
+      fetchRequests();
+      fetchInvites();
+    }, 3500);
+    return () => window.clearInterval(interval);
+  }, [user?.id, fetchFriends, fetchRequests, fetchInvites]);
+
+  useEffect(() => {
+    clearSearch();
+    return () => {
+      clearSearch();
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+      if (sentClearTimeout.current) clearTimeout(sentClearTimeout.current);
+    };
+  }, [clearSearch]);
 
   function handleSearchChange(q: string) {
     setSearchQuery(q);
+    setKeepSearchResultsVisible(false);
+    if (sentClearTimeout.current) clearTimeout(sentClearTimeout.current);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     if (q.length < 2) { clearSearch(); return; }
     searchTimeout.current = setTimeout(() => searchUsers(q), 300);
@@ -45,6 +68,15 @@ export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) 
     setRequestStatus((s) => ({ ...s, [username]: 'sending' }));
     const { error } = await sendRequest(username);
     setRequestStatus((s) => ({ ...s, [username]: error ? 'error' : 'sent' }));
+    if (!error) {
+      setSearchQuery('');
+      setKeepSearchResultsVisible(true);
+      if (sentClearTimeout.current) clearTimeout(sentClearTimeout.current);
+      sentClearTimeout.current = setTimeout(() => {
+        setKeepSearchResultsVisible(false);
+        clearSearch();
+      }, 1600);
+    }
   }
 
   async function handleInvite(username: string) {
@@ -59,6 +91,17 @@ export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) 
     setChallengeStatus((s) => ({ ...s, [username]: 'sending' }));
     const { error } = await onChallenge(username);
     setChallengeStatus((s) => ({ ...s, [username]: error ? 'error' : 'sent' }));
+  }
+
+  async function handleAcceptInvite(invite: GameInvite) {
+    setInviteAcceptStatus((s) => ({ ...s, [invite.id]: 'joining' }));
+    const { error, roomCode: acceptedRoomCode } = await acceptGameInvite(invite);
+    if (error || !acceptedRoomCode) {
+      setInviteAcceptStatus((s) => ({ ...s, [invite.id]: 'error' }));
+      return;
+    }
+    onClose();
+    navigate(`/room/${acceptedRoomCode}`);
   }
 
   if (!user) {
@@ -84,6 +127,9 @@ export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) 
       </PanelShell>
     );
   }
+
+  const showSearchResults =
+    (searchQuery.trim().length >= 2 || keepSearchResultsVisible) && searchResults.length > 0;
 
   return (
     <PanelShell onClose={onClose}>
@@ -113,19 +159,26 @@ export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) 
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-              <Link
-                to={`/room/${inv.roomCode}`}
+              <button
+                onClick={() => handleAcceptInvite(inv)}
+                disabled={inviteAcceptStatus[inv.id] === 'joining'}
                 style={{
                   padding: '0.4rem 0.875rem',
                   borderRadius: '0.375rem',
+                  border: 'none',
                   background: 'var(--p1-primary)',
                   color: '#fff', fontWeight: 700,
-                  textDecoration: 'none', fontSize: '0.8rem',
+                  fontSize: '0.8rem',
                   fontFamily: 'var(--font-display)',
+                  cursor: inviteAcceptStatus[inv.id] === 'joining' ? 'wait' : 'pointer',
                 }}
               >
-                Join
-              </Link>
+                {inviteAcceptStatus[inv.id] === 'joining'
+                  ? 'Joining...'
+                  : inviteAcceptStatus[inv.id] === 'error'
+                  ? 'Retry'
+                  : 'Join'}
+              </button>
               <button
                 onClick={() => dismissInvite(inv.id)}
                 style={{
@@ -168,7 +221,7 @@ export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) 
 
         {/* Search results */}
         <AnimatePresence>
-          {searchResults.length > 0 && (
+          {showSearchResults && (
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -466,49 +519,6 @@ function FriendCard({
       </div>
 
       <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0, alignItems: 'center' }}>
-        {roomCode ? (
-          inviteStatus === 'sent' ? (
-            <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>Invited ✓</span>
-          ) : (
-            <button
-              onClick={onInvite}
-              disabled={inviteStatus === 'sending'}
-              title="Invite to this game"
-              style={{
-                padding: '0.35rem 0.625rem',
-                borderRadius: '0.375rem',
-                border: '1px solid rgba(234,88,12,0.4)',
-                background: 'rgba(234,88,12,0.12)',
-                color: '#fdba74', fontSize: '0.75rem', fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'var(--font-display)',
-              }}
-            >
-              {inviteStatus === 'sending' ? '…' : 'Invite'}
-            </button>
-          )
-        ) : (
-          challengeStatus === 'sent' ? (
-            <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>Challenged ✓</span>
-          ) : (
-            <button
-              onClick={onChallenge}
-              disabled={challengeStatus === 'sending'}
-              title="Challenge friend"
-              style={{
-                padding: '0.35rem 0.625rem',
-                borderRadius: '0.375rem',
-                border: '1px solid rgba(234,88,12,0.4)',
-                background: 'rgba(234,88,12,0.12)',
-                color: '#fdba74', fontSize: '0.75rem', fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'var(--font-display)',
-              }}
-            >
-              {challengeStatus === 'sending' ? '…' : challengeStatus === 'error' ? 'Retry' : 'Challenge'}
-            </button>
-          )
-        )}
-
-        {/* Remove */}
         {confirmingRemove ? (
           <>
             <button
@@ -536,22 +546,65 @@ function FriendCard({
             </button>
           </>
         ) : (
-          <button
-            onClick={onRemove}
-            title="Remove friend"
-            style={{
-              padding: '0.3rem 0.5rem',
-              borderRadius: '0.375rem',
-              border: '1px solid rgba(255,255,255,0.08)',
-              background: 'transparent',
-              color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer',
-              transition: 'border-color 0.15s, color 0.15s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; e.currentTarget.style.color = '#f87171'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-          >
-            ✕
-          </button>
+          <>
+            {roomCode ? (
+              inviteStatus === 'sent' ? (
+                <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>Invited ✓</span>
+              ) : (
+                <button
+                  onClick={onInvite}
+                  disabled={inviteStatus === 'sending'}
+                  title="Invite to this game"
+                  style={{
+                    padding: '0.35rem 0.625rem',
+                    borderRadius: '0.375rem',
+                    border: '1px solid rgba(234,88,12,0.4)',
+                    background: 'rgba(234,88,12,0.12)',
+                    color: '#fdba74', fontSize: '0.75rem', fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'var(--font-display)',
+                  }}
+                >
+                  {inviteStatus === 'sending' ? '…' : 'Invite'}
+                </button>
+              )
+            ) : (
+              challengeStatus === 'sent' ? (
+                <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>Challenged ✓</span>
+              ) : (
+                <button
+                  onClick={onChallenge}
+                  disabled={challengeStatus === 'sending'}
+                  title="Challenge friend"
+                  style={{
+                    padding: '0.35rem 0.625rem',
+                    borderRadius: '0.375rem',
+                    border: '1px solid rgba(234,88,12,0.4)',
+                    background: 'rgba(234,88,12,0.12)',
+                    color: '#fdba74', fontSize: '0.75rem', fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'var(--font-display)',
+                  }}
+                >
+                  {challengeStatus === 'sending' ? '…' : challengeStatus === 'error' ? 'Retry' : 'Challenge'}
+                </button>
+              )
+            )}
+            <button
+              onClick={onRemove}
+              title="Remove friend"
+              style={{
+                padding: '0.3rem 0.5rem',
+                borderRadius: '0.375rem',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'transparent',
+                color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer',
+                transition: 'border-color 0.15s, color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; e.currentTarget.style.color = '#f87171'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              ✕
+            </button>
+          </>
         )}
       </div>
     </div>

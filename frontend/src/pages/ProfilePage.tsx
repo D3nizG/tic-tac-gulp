@@ -7,7 +7,7 @@ import { useFriendsStore } from '../stores/friendsStore.js';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
 function authHeaders(token: string | null): Record<string, string> {
-  const h: Record<string, string> = {};
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
 }

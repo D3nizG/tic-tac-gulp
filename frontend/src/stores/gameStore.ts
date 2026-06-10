@@ -13,6 +13,8 @@ interface SessionStats {
   wins: number;
   losses: number;
   draws: number;
+  myGulps: number;
+  opponentGulps: number;
 }
 
 interface GameStore {
@@ -31,6 +33,8 @@ interface GameStore {
   lastPlacedMoveCount: number | null;
   /** Which player just disconnected (for banner) */
   disconnectedPlayer: PlayerId | null;
+  /** Pregame room was closed because the other player left. */
+  roomClosedReason: string | null;
 
   // Phase 4 state
   rematchState: RematchState;
@@ -47,10 +51,12 @@ interface GameStore {
   setMoveError: (error: string | null) => void;
   recordMove: (moveCount: number) => void;
   setDisconnectedPlayer: (p: PlayerId | null) => void;
+  closeRoom: (reason: string) => void;
+  clearRoomClosedReason: () => void;
   setRematchState: (state: RematchState) => void;
   addChatMessage: (msg: ChatMessage) => void;
   clearUnreadChat: () => void;
-  incrementStats: (result: 'win' | 'loss' | 'draw') => void;
+  incrementStats: (result: 'win' | 'loss' | 'draw', myGulps?: number, opponentGulps?: number) => void;
   reset: () => void;
 }
 
@@ -65,10 +71,11 @@ const initialState = {
   lastMoveError: null,
   lastPlacedMoveCount: null,
   disconnectedPlayer: null,
+  roomClosedReason: null,
   rematchState: 'idle' as RematchState,
   chatMessages: [] as ChatMessage[],
   unreadChat: 0,
-  sessionStats: { wins: 0, losses: 0, draws: 0 },
+  sessionStats: { wins: 0, losses: 0, draws: 0, myGulps: 0, opponentGulps: 0 },
 };
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -92,6 +99,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setDisconnectedPlayer: (disconnectedPlayer) => set({ disconnectedPlayer }),
 
+  closeRoom: (roomClosedReason) => {
+    const { sessionStats } = get();
+    set({ ...initialState, sessionStats, roomClosedReason });
+  },
+
+  clearRoomClosedReason: () => set({ roomClosedReason: null }),
+
   setRematchState: (rematchState) => set({ rematchState }),
 
   addChatMessage: (msg) =>
@@ -102,12 +116,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   clearUnreadChat: () => set({ unreadChat: 0 }),
 
-  incrementStats: (result) =>
+  incrementStats: (result, myGulps = 0, opponentGulps = 0) =>
     set((s) => ({
       sessionStats: {
         wins: s.sessionStats.wins + (result === 'win' ? 1 : 0),
         losses: s.sessionStats.losses + (result === 'loss' ? 1 : 0),
         draws: s.sessionStats.draws + (result === 'draw' ? 1 : 0),
+        myGulps: s.sessionStats.myGulps + myGulps,
+        opponentGulps: s.sessionStats.opponentGulps + opponentGulps,
       },
     })),
 

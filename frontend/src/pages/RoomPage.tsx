@@ -10,8 +10,14 @@ export default function RoomPage() {
   const navigate = useNavigate();
   const gameState = useGameStore((s) => s.gameState);
   const sessionId = useGameStore((s) => s.sessionId);
-  const setSession = useGameStore((s) => s.setSession);
-  const setGameState = useGameStore((s) => s.setGameState);
+  const roomClosedReason = useGameStore((s) => s.roomClosedReason);
+  const clearRoomClosedReason = useGameStore((s) => s.clearRoomClosedReason);
+
+  useEffect(() => {
+    if (!roomClosedReason) return;
+    clearRoomClosedReason();
+    navigate('/', { replace: true });
+  }, [roomClosedReason, clearRoomClosedReason, navigate]);
 
   // Reconnect on page load if we have session info stored
   useEffect(() => {
@@ -29,6 +35,28 @@ export default function RoomPage() {
       }
     }
   }, [code, sessionId]);
+
+  useEffect(() => {
+    function leavePregameRoom() {
+      const state = useGameStore.getState();
+      const status = state.gameState?.status;
+      if (status !== 'WAITING' && status !== 'LOBBY') return;
+
+      const socket = getSocket();
+      if (socket.connected) socket.disconnect();
+      localStorage.removeItem('ttg_sessionId');
+      localStorage.removeItem('ttg_roomCode');
+      state.reset();
+    }
+
+    window.addEventListener('popstate', leavePregameRoom);
+    window.addEventListener('pagehide', leavePregameRoom);
+
+    return () => {
+      window.removeEventListener('popstate', leavePregameRoom);
+      window.removeEventListener('pagehide', leavePregameRoom);
+    };
+  }, []);
 
   if (!code) {
     navigate('/');

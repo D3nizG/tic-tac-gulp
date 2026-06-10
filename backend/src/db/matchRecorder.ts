@@ -1,6 +1,29 @@
 import type { GameState } from '@tic-tac-gulp/shared';
 import { getSupabase } from './supabase.js';
 
+let supportsMatchGulps = true;
+let supportsRatingGulps = true;
+
+interface RatingRow {
+  elo?: number;
+  wins?: number;
+  losses?: number;
+  draws?: number;
+  gulps?: number;
+}
+
+function missingColumn(error: { message?: string; code?: string } | null, column: string): boolean {
+  const message = error?.message?.toLowerCase() ?? '';
+  return Boolean(
+    error &&
+    (error.code === '42703' ||
+      error.code === 'PGRST204' ||
+      message.includes(`'${column.toLowerCase()}'`) ||
+      message.includes(`column ${column.toLowerCase()}`) ||
+      message.includes(`${column.toLowerCase()} column`))
+  );
+}
+
 /**
  * Records a completed match to the `matches` table.
  * Only runs if both players are authenticated (have a userId).
@@ -27,7 +50,7 @@ export async function recordMatch(
   const p1Gulps = state.gulpCounts?.P1 ?? 0;
   const p2Gulps = state.gulpCounts?.P2 ?? 0;
 
-  const { error } = await supabase.from('matches').insert({
+  const matchRecord = {
     room_code:   state.roomCode ?? null,
     p1_user_id:  p1UserId,
     p2_user_id:  p2UserId,
@@ -35,9 +58,21 @@ export async function recordMatch(
     end_reason:  state.endReason,
     move_count:  moveCount,
     duration_ms: durationMs,
+  };
+  const matchRecordWithGulps = {
+    ...matchRecord,
     p1_gulps:    p1Gulps,
     p2_gulps:    p2Gulps,
-  });
+  };
+
+  let { error } = await supabase
+    .from('matches')
+    .insert(supportsMatchGulps ? matchRecordWithGulps : matchRecord);
+
+  if (error && (missingColumn(error, 'p1_gulps') || missingColumn(error, 'p2_gulps'))) {
+    supportsMatchGulps = false;
+    ({ error } = await supabase.from('matches').insert(matchRecord));
+  }
 
   if (error) {
     console.error('[matchRecorder] Failed to record match:', error.message);
@@ -58,31 +93,51 @@ async function updateRating(
   const supabase = getSupabase();
   if (!supabase) return;
 
-  const { data: current, error: readError } = await supabase
+  let { data: current, error: readError } = await supabase
     .from('ratings')
-    .select('elo, wins, losses, draws, gulps')
+    .select(supportsRatingGulps ? 'elo, wins, losses, draws, gulps' : 'elo, wins, losses, draws')
     .eq('user_id', userId)
     .maybeSingle();
+
+  if (readError && missingColumn(readError, 'gulps')) {
+    supportsRatingGulps = false;
+    ({ data: current, error: readError } = await supabase
+      .from('ratings')
+      .select('elo, wins, losses, draws')
+      .eq('user_id', userId)
+      .maybeSingle());
+  }
 
   if (readError) {
     console.error('[matchRecorder] Failed to read rating:', readError.message);
     return;
   }
 
-  const elo = current?.elo ?? 1200;
+  const rating = current as RatingRow | null;
+  const elo = rating?.elo ?? 1200;
   const next = {
     user_id: userId,
     elo,
-    wins: (current?.wins ?? 0) + (result === 'win' ? 1 : 0),
-    losses: (current?.losses ?? 0) + (result === 'loss' ? 1 : 0),
-    draws: (current?.draws ?? 0) + (result === 'draw' ? 1 : 0),
-    gulps: (current?.gulps ?? 0) + gulps,
+    wins: (rating?.wins ?? 0) + (result === 'win' ? 1 : 0),
+    losses: (rating?.losses ?? 0) + (result === 'loss' ? 1 : 0),
+    draws: (rating?.draws ?? 0) + (result === 'draw' ? 1 : 0),
     updated_at: new Date().toISOString(),
   };
+  const nextWithGulps = {
+    ...next,
+    gulps: (rating?.gulps ?? 0) + gulps,
+  };
 
-  const { error } = await supabase
+  let { error } = await supabase
     .from('ratings')
-    .upsert(next, { onConflict: 'user_id' });
+    .upsert(supportsRatingGulps ? nextWithGulps : next, { onConflict: 'user_id' });
+
+  if (error && missingColumn(error, 'gulps')) {
+    supportsRatingGulps = false;
+    ({ error } = await supabase
+      .from('ratings')
+      .upsert(next, { onConflict: 'user_id' }));
+  }
 
   if (error) {
     console.error('[matchRecorder] Failed to update rating:', error.message);

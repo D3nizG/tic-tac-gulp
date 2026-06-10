@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import supertest from 'supertest';
 import { createServer } from '../server.js';
+import { roomStore } from '../store/roomStore.js';
 
 const { app } = createServer();
 const request = supertest(app);
@@ -32,8 +33,8 @@ describe('POST /api/rooms', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects displayName longer than 16 characters', async () => {
-    const res = await request.post('/api/rooms').send({ displayName: 'A'.repeat(17) });
+  it('rejects displayName longer than 20 characters', async () => {
+    const res = await request.post('/api/rooms').send({ displayName: 'A'.repeat(21) });
     expect(res.status).toBe(400);
   });
 
@@ -42,8 +43,8 @@ describe('POST /api/rooms', () => {
     expect(res.status).toBe(201);
   });
 
-  it('accepts displayName at maximum length (16)', async () => {
-    const res = await request.post('/api/rooms').send({ displayName: 'A'.repeat(16) });
+  it('accepts displayName at maximum length (20)', async () => {
+    const res = await request.post('/api/rooms').send({ displayName: 'A'.repeat(20) });
     expect(res.status).toBe(201);
   });
 
@@ -53,6 +54,37 @@ describe('POST /api/rooms', () => {
       request.post('/api/rooms').send({ displayName: 'Bob' }),
     ]);
     expect(r1.body.roomCode).not.toBe(r2.body.roomCode);
+  });
+});
+
+// ─── POST /api/rooms/search ──────────────────────────────────────────────────
+
+describe('POST /api/rooms/search', () => {
+  it('creates a public waiting room, then matches the next searcher into it', async () => {
+    const first = await request.post('/api/rooms/search').send({ displayName: 'Alice' });
+    expect(first.status).toBe(201);
+    expect(first.body.playerId).toBe('P1');
+    expect(first.body.matched).toBe(false);
+
+    const waitingState = roomStore.get(first.body.roomCode)!;
+    roomStore.set(first.body.roomCode, {
+      ...waitingState,
+      players: {
+        ...waitingState.players,
+        P1: { ...waitingState.players.P1, connected: true },
+      },
+    });
+
+    const second = await request.post('/api/rooms/search').send({ displayName: 'Bob' });
+    expect(second.status).toBe(200);
+    expect(second.body.roomCode).toBe(first.body.roomCode);
+    expect(second.body.playerId).toBe('P2');
+    expect(second.body.matched).toBe(true);
+  });
+
+  it('rejects invalid display names', async () => {
+    const res = await request.post('/api/rooms/search').send({ displayName: 'AB' });
+    expect(res.status).toBe(400);
   });
 });
 
@@ -93,11 +125,11 @@ describe('POST /api/rooms/:code/join', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects displayName longer than 16 characters', async () => {
+  it('rejects displayName longer than 20 characters', async () => {
     const roomCode = await createRoom();
     const res = await request
       .post(`/api/rooms/${roomCode}/join`)
-      .send({ displayName: 'B'.repeat(17) });
+      .send({ displayName: 'B'.repeat(21) });
     expect(res.status).toBe(400);
   });
 

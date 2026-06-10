@@ -4,6 +4,48 @@ import { getSupabase } from '../db/supabase.js';
 
 export const usersRouter = Router();
 
+let supportsRatingGulps = true;
+
+function missingGulpsColumn(error: { message?: string; code?: string } | null): boolean {
+  const message = error?.message?.toLowerCase() ?? '';
+  return Boolean(
+    error &&
+    (error.code === '42703' ||
+      error.code === 'PGRST204' ||
+      message.includes('gulps'))
+  );
+}
+
+async function getRatingForUser(supabase: ReturnType<typeof getSupabase>, userId: string) {
+  if (!supabase) return null;
+  let { data, error } = await supabase
+    .from('ratings')
+    .select(supportsRatingGulps ? 'elo, wins, losses, draws, gulps' : 'elo, wins, losses, draws')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error && missingGulpsColumn(error)) {
+    supportsRatingGulps = false;
+    ({ data, error } = await supabase
+      .from('ratings')
+      .select('elo, wins, losses, draws')
+      .eq('user_id', userId)
+      .maybeSingle());
+  }
+
+  if (error) {
+    console.error('[users] rating lookup error:', error.message);
+    return null;
+  }
+  return data as {
+    elo?: number;
+    wins?: number;
+    losses?: number;
+    draws?: number;
+    gulps?: number;
+  } | null;
+}
+
 async function canViewRecentGames(
   supabase: ReturnType<typeof getSupabase>,
   viewerId: string | undefined,
@@ -49,11 +91,7 @@ usersRouter.get('/me', requireAuth, async (req, res) => {
   }
 
   // Fetch ratings
-  const { data: ratingData } = await supabase
-    .from('ratings')
-    .select('elo, wins, losses, draws, gulps')
-    .eq('user_id', req.userId)
-    .single();
+  const ratingData = await getRatingForUser(supabase, req.userId!);
 
   res.json({
     ...data,
@@ -232,11 +270,7 @@ usersRouter.get('/:username', optionalAuth, async (req, res) => {
     return;
   }
 
-  const { data: ratingData } = await supabase
-    .from('ratings')
-    .select('elo, wins, losses, draws, gulps')
-    .eq('user_id', data.id)
-    .single();
+  const ratingData = await getRatingForUser(supabase, data.id);
   const canView = await canViewRecentGames(supabase, req.userId, data.id);
 
   res.json({

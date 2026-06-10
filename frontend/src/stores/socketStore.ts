@@ -38,6 +38,13 @@ function attachListeners(s: Socket) {
     store().setGameState(data.gameState);
   });
 
+  s.on('room:closed', (data: { reason: string }) => {
+    localStorage.removeItem('ttg_sessionId');
+    localStorage.removeItem('ttg_roomCode');
+    store().closeRoom(data.reason);
+    s.disconnect();
+  });
+
   s.on('game:started', (data: { gameState: GameState }) => {
     store().setGameState(data.gameState);
   });
@@ -52,9 +59,12 @@ function attachListeners(s: Socket) {
     const { yourPlayerId } = store();
     const { winner } = data.gameState;
     if (yourPlayerId) {
-      if (winner === 'DRAW') store().incrementStats('draw');
-      else if (winner === yourPlayerId) store().incrementStats('win');
-      else store().incrementStats('loss');
+      const opponentId: PlayerId = yourPlayerId === 'P1' ? 'P2' : 'P1';
+      const myGulps = data.gameState.gulpCounts[yourPlayerId] ?? 0;
+      const opponentGulps = data.gameState.gulpCounts[opponentId] ?? 0;
+      if (winner === 'DRAW') store().incrementStats('draw', myGulps, opponentGulps);
+      else if (winner === yourPlayerId) store().incrementStats('win', myGulps, opponentGulps);
+      else store().incrementStats('loss', myGulps, opponentGulps);
     }
     store().setRematchState('idle');
     store().setGameState(data.gameState);
@@ -101,6 +111,33 @@ function attachListeners(s: Socket) {
 export function emitMove(pieceSize: 1 | 2 | 3, row: number, col: number) {
   const { sessionId, roomCode } = useGameStore.getState();
   getSocket().emit('move:attempt', { sessionId, roomCode, pieceSize, row, col });
+}
+
+/** Stores a player session and connects its socket to the room. */
+export function joinRoomSession(
+  roomCode: string,
+  playerId: PlayerId,
+  sessionId: string,
+  displayName: string
+) {
+  const previousRoomCode = useGameStore.getState().roomCode;
+  useGameStore.getState().setSession(playerId, roomCode, sessionId);
+  localStorage.setItem('ttg_sessionId', sessionId);
+  localStorage.setItem('ttg_roomCode', roomCode);
+
+  const socket = getSocket();
+  const payload = { sessionId, roomCode, displayName, playerId };
+  if (socket.connected && previousRoomCode !== roomCode) {
+    socket.disconnect();
+  }
+  if (socket.connected) {
+    socket.emit('room:join', payload);
+  } else {
+    socket.connect();
+    socket.once('connect', () => {
+      socket.emit('room:join', payload);
+    });
+  }
 }
 
 /** Emits a game start request (host only). */

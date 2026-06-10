@@ -328,7 +328,13 @@ function GulpStep() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '52px 7.5rem',
+        alignItems: 'center',
+        columnGap: '1.5rem',
+        width: 'calc(52px + 1.5rem + 7.5rem)',
+      }}>
         {/* Small piece (P1) */}
         <div style={{
           width: 52, height: 52,
@@ -374,7 +380,7 @@ function GulpStep() {
         </div>
 
         {/* Label */}
-        <div style={{ textAlign: 'center', minWidth: '5rem' }}>
+        <div style={{ textAlign: 'center', width: '7.5rem', height: '3.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <AnimatePresence mode="wait">
             {phase === 0 && (
               <motion.p key="p0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

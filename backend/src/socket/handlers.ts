@@ -9,14 +9,16 @@ import {
   startGame,
   resetGameState,
 } from '@tic-tac-gulp/shared';
-import type { GameState, MoveEvent, PlayerId, PieceSize } from '@tic-tac-gulp/shared';
+import type { GameState, MoveEvent, Player, PlayerId, PieceSize } from '@tic-tac-gulp/shared';
 import { roomStore } from '../store/roomStore.js';
 import { recordMatch } from '../db/matchRecorder.js';
 
 const TURN_TIMEOUT_MS = 13_000;
+const PUBLIC_MATCH_START_DELAY_MS = 2_200;
 
 /** Per-room turn timer handles. */
 const turnTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const publicMatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Returns the best auto-move for the current player: smallest piece, random valid cell. */
 function computeAutoMove(state: GameState): MoveEvent | null {
@@ -38,6 +40,114 @@ function computeAutoMove(state: GameState): MoveEvent | null {
 function clearTurnTimer(roomCode: string) {
   const h = turnTimers.get(roomCode);
   if (h) { clearTimeout(h); turnTimers.delete(roomCode); }
+}
+
+function clearPublicMatchTimer(roomCode: string) {
+  const h = publicMatchTimers.get(roomCode);
+  if (h) { clearTimeout(h); publicMatchTimers.delete(roomCode); }
+}
+
+function schedulePublicMatchStart(
+  io: Server,
+  roomCode: string,
+  delayMs: number,
+  startingPlayer?: PlayerId
+) {
+  clearPublicMatchTimer(roomCode);
+  const h = setTimeout(() => {
+    let state = roomStore.get(roomCode);
+    if (
+      !state?.isPublic ||
+      state.status !== 'LOBBY' ||
+      !state.players.P1.connected ||
+      !state.players.P2.connected
+    ) {
+      return;
+    }
+
+    state = startGame(state, startingPlayer);
+    roomStore.set(roomCode, state);
+    io.to(roomCode).emit('game:started', { gameState: sanitizeState(state) });
+    startTurnTimer(io, roomCode);
+  }, delayMs);
+  publicMatchTimers.set(roomCode, h);
+}
+
+function closePregameRoom(io: Server, state: GameState, playerId: PlayerId) {
+  clearPublicMatchTimer(state.roomCode);
+  clearTurnTimer(state.roomCode);
+  roomStore.delete(state.roomCode);
+  io.to(state.roomCode).emit('room:closed', {
+    playerId,
+    reason: state.isPublic ? 'matchmaking_left' : 'lobby_left',
+  });
+}
+
+function makeEmptyPlayer(playerId: PlayerId): Player {
+  return {
+    id: playerId,
+    displayName: '',
+    sessionId: '',
+    socketId: null,
+    connected: false,
+    inventory: { small: 3, medium: 3, large: 3 },
+    userId: null,
+  };
+}
+
+function handlePregameDisconnect(io: Server, state: GameState, playerId: PlayerId) {
+  clearPublicMatchTimer(state.roomCode);
+
+  if (state.isPublic) {
+    closePregameRoom(io, state, playerId);
+    return;
+  }
+
+  const remainingId: PlayerId = playerId === 'P1' ? 'P2' : 'P1';
+  const remaining = state.players[remainingId];
+  if (!remaining.connected || !remaining.sessionId) {
+    closePregameRoom(io, state, playerId);
+    return;
+  }
+
+  const updatedAt = Date.now();
+  let nextState: GameState;
+
+  if (playerId === 'P2') {
+    nextState = {
+      ...state,
+      status: 'WAITING',
+      players: {
+        ...state.players,
+        P2: makeEmptyPlayer('P2'),
+      },
+      startingPlayer: 'P1',
+      currentTurn: 'P1',
+      updatedAt,
+    };
+  } else {
+    const promotedSocketId = remaining.socketId;
+    nextState = {
+      ...state,
+      status: 'WAITING',
+      players: {
+        P1: { ...remaining, id: 'P1' },
+        P2: makeEmptyPlayer('P2'),
+      },
+      startingPlayer: 'P1',
+      currentTurn: 'P1',
+      updatedAt,
+    };
+
+    const promotedSocket = promotedSocketId ? io.sockets.sockets.get(promotedSocketId) : undefined;
+    if (promotedSocket) {
+      promotedSocket.data.playerId = 'P1';
+      promotedSocket.emit('player:role', { yourPlayerId: 'P1' });
+    }
+  }
+
+  roomStore.set(state.roomCode, nextState);
+  io.to(state.roomCode).emit('room:updated', { gameState: sanitizeState(nextState) });
 }
 
 function maybeApplyDisconnectForfeit(state: GameState): GameState {
@@ -99,9 +209,10 @@ function startTurnTimer(io: Server, roomCode: string) {
 
 export function registerSocketHandlers(
   io: Server,
-  options: { forfeitTimeoutMs?: number; startingPlayer?: PlayerId } = {}
+  options: { forfeitTimeoutMs?: number; startingPlayer?: PlayerId; publicMatchStartDelayMs?: number } = {}
 ) {
   const FORFEIT_TIMEOUT_MS = options.forfeitTimeoutMs ?? 60_000;
+  const PUBLIC_START_DELAY_MS = options.publicMatchStartDelayMs ?? PUBLIC_MATCH_START_DELAY_MS;
   io.on('connection', (socket: Socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 
@@ -117,8 +228,26 @@ export function registerSocketHandlers(
           return;
         }
 
+        if (playerId === 'P1' && state.players.P1.sessionId !== sessionId) {
+          socket.emit('error', { message: 'Invalid session.', code: 'SESSION_INVALID' });
+          return;
+        }
+        if (
+          playerId === 'P2' &&
+          state.players.P2.sessionId &&
+          state.players.P2.sessionId !== sessionId
+        ) {
+          socket.emit('error', { message: 'Room is full.', code: 'ROOM_FULL' });
+          return;
+        }
+
         if (playerId === 'P2' && state.status === 'WAITING') {
-          state = addSecondPlayer(state, displayName.trim(), sessionId);
+          state = addSecondPlayer(
+            state,
+            displayName.trim(),
+            sessionId,
+            state.players.P2.userId ?? null
+          );
         }
 
         // Associate socket with player
@@ -135,37 +264,7 @@ export function registerSocketHandlers(
           },
         };
 
-        // ── Randomise who is P1 / P2 ──────────────────────────────────────
-        // When P2 joins (both players now in the room), flip a coin to decide
-        // which session becomes P1 and which becomes P2.  Both players are
-        // notified of their assigned role so the client stores the correct side.
         let actualPlayerId: PlayerId = playerId;
-        if (playerId === 'P2' && state.status === 'WAITING') {
-          const swap = Math.random() < 0.5;
-          if (swap) {
-            // Swap P1 ↔ P2 player data
-            const origP1 = { ...state.players.P1 };
-            const origP2 = { ...state.players.P2 };
-            state = {
-              ...state,
-              players: {
-                P1: origP2, // joiner (this socket) becomes P1
-                P2: origP1, // creator becomes P2
-              },
-            };
-            actualPlayerId = 'P1';
-
-            // Update creator's socket metadata and tell them their new role
-            const creatorSocketId = origP1.socketId;
-            if (creatorSocketId) {
-              const creatorSocket = io.sockets.sockets.get(creatorSocketId);
-              if (creatorSocket) {
-                creatorSocket.data.playerId = 'P2';
-                creatorSocket.emit('player:role', { yourPlayerId: 'P2' });
-              }
-            }
-          }
-        }
 
         roomStore.set(roomCode, state);
         roomStore.bindSession(sessionId, roomCode);
@@ -181,8 +280,17 @@ export function registerSocketHandlers(
           gameState: sanitizeState(state),
         });
 
-        // Notify the other player that someone joined
-        socket.to(roomCode).emit('room:updated', { gameState: sanitizeState(state) });
+        if (
+          state.isPublic &&
+          state.status === 'LOBBY' &&
+          state.players.P1.connected &&
+          state.players.P2.connected
+        ) {
+          io.to(roomCode).emit('room:updated', { gameState: sanitizeState(state) });
+          schedulePublicMatchStart(io, roomCode, PUBLIC_START_DELAY_MS, options.startingPlayer);
+        } else {
+          socket.to(roomCode).emit('room:updated', { gameState: sanitizeState(state) });
+        }
       }
     );
 
@@ -266,6 +374,7 @@ export function registerSocketHandlers(
 
       state = startGame(state, options.startingPlayer);
       roomStore.set(roomCode, state);
+      clearPublicMatchTimer(roomCode);
 
       io.to(roomCode).emit('game:started', { gameState: sanitizeState(state) });
       startTurnTimer(io, roomCode);
@@ -440,6 +549,11 @@ export function registerSocketHandlers(
       // If the game is already ended, notify the opponent that rematch is unavailable
       if (state.status === 'ENDED') {
         socket.to(roomCode).emit('rematch:unavailable', { playerId });
+        return;
+      }
+
+      if (state.status === 'WAITING' || state.status === 'LOBBY') {
+        handlePregameDisconnect(io, state, playerId);
         return;
       }
 

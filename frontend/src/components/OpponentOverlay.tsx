@@ -42,7 +42,7 @@ export default function OpponentOverlay({ opponentId, onClose }: Props) {
 
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [friendStatus, setFriendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [friendStatus, setFriendStatus] = useState<'idle' | 'sending' | 'sent' | 'accepted' | 'error'>('idle');
 
   const player = gameState?.players[opponentId];
 
@@ -111,8 +111,12 @@ export default function OpponentOverlay({ opponentId, onClose }: Props) {
   async function handleAddFriend() {
     if (!player?.displayName) return;
     setFriendStatus('sending');
-    const { error } = await sendRequest(player.displayName);
-    setFriendStatus(error ? 'error' : 'sent');
+    const { error, status } = await sendRequest(player.displayName);
+    if (error) {
+      setFriendStatus('error');
+      return;
+    }
+    setFriendStatus(status === 'accepted' ? 'accepted' : 'sent');
   }
 
   return (
@@ -192,33 +196,42 @@ export default function OpponentOverlay({ opponentId, onClose }: Props) {
               {opponentId} - {label}
             </div>
           </div>
-          {canAddFriend && (
-            <button
-              onClick={handleAddFriend}
-              disabled={friendStatus === 'sending' || friendStatus === 'sent'}
-              title="Add friend"
-              style={{
-                width: '1.75rem',
-                height: '1.75rem',
-                borderRadius: '50%',
-                border: friendStatus === 'sent'
-                  ? '1px solid rgba(74,222,128,0.45)'
-                  : '1px solid rgba(37,99,235,0.45)',
-                background: friendStatus === 'sent'
-                  ? 'rgba(74,222,128,0.12)'
-                  : 'rgba(37,99,235,0.14)',
-                color: friendStatus === 'sent' ? '#4ade80' : '#93c5fd',
-                fontSize: '0.9rem',
-                fontWeight: 900,
-                lineHeight: 1,
-                cursor: friendStatus === 'sending' || friendStatus === 'sent' ? 'default' : 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              {friendStatus === 'sending' ? '...' : friendStatus === 'sent' ? '✓' : '+'}
-            </button>
-          )}
         </div>
+
+        {canAddFriend && (
+          <button
+            onClick={handleAddFriend}
+            disabled={friendStatus === 'sending' || friendStatus === 'sent' || friendStatus === 'accepted'}
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '0.5rem',
+              border: friendStatus === 'sent'
+                ? '1px solid rgba(74,222,128,0.45)'
+                : '1px solid rgba(37,99,235,0.45)',
+              background: friendStatus === 'sent'
+                ? 'rgba(74,222,128,0.12)'
+                : 'rgba(37,99,235,0.14)',
+              color: friendStatus === 'sent' ? '#4ade80' : '#93c5fd',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+              fontFamily: 'var(--font-display)',
+              cursor: friendStatus === 'sending' || friendStatus === 'sent' || friendStatus === 'accepted'
+                ? 'default'
+                : 'pointer',
+            }}
+          >
+            {friendStatus === 'sending'
+              ? 'Sending...'
+              : friendStatus === 'accepted'
+              ? 'Friends'
+              : friendStatus === 'sent'
+              ? 'Request sent'
+              : friendStatus === 'error'
+              ? 'Retry add friend'
+              : 'Add friend'}
+          </button>
+        )}
 
         <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
 

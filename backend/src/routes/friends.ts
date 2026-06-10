@@ -4,6 +4,17 @@ import { getSupabase } from '../db/supabase.js';
 
 export const friendsRouter = Router();
 
+interface FriendshipRow {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: 'pending' | 'accepted' | 'blocked';
+}
+
+function friendshipSelect() {
+  return 'id, requester_id, addressee_id, status';
+}
+
 /** GET /api/friends — list accepted friends */
 friendsRouter.get('/', requireAuth, async (req, res) => {
   const supabase = getSupabase();
@@ -97,38 +108,106 @@ friendsRouter.get('/requests', requireAuth, async (req, res) => {
 
 /** POST /api/friends/request — send a friend request */
 friendsRouter.post('/request', requireAuth, async (req, res) => {
-  const supabase = getSupabase();
-  if (!supabase) { res.status(503).json({ error: 'Database not configured.' }); return; }
+  try {
+    const supabase = getSupabase();
+    if (!supabase) { res.status(503).json({ error: 'Database not configured.' }); return; }
 
-  const { username } = req.body as { username?: string };
-  if (!username) { res.status(400).json({ error: 'username required.' }); return; }
+    const { username } = req.body as { username?: string };
+    if (!username) { res.status(400).json({ error: 'username required.' }); return; }
 
-  // Resolve username → id
-  const { data: target } = await supabase
-    .from('users')
-    .select('id')
-    .eq('username', username.trim())
-    .single();
+    // Resolve username → id
+    const { data: target } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username.trim())
+      .single();
 
-  if (!target) { res.status(404).json({ error: 'User not found.' }); return; }
-  if (target.id === req.userId) { res.status(400).json({ error: 'Cannot add yourself.' }); return; }
+    if (!target) { res.status(404).json({ error: 'User not found.' }); return; }
+    if (target.id === req.userId) { res.status(400).json({ error: 'Cannot add yourself.' }); return; }
 
-  const { data, error } = await supabase
-    .from('friendships')
-    .insert({ requester_id: req.userId, addressee_id: target.id, status: 'pending' })
-    .select('id')
-    .single();
+    const [outgoingResult, incomingResult] = await Promise.all([
+      supabase
+        .from('friendships')
+        .select(friendshipSelect())
+        .eq('requester_id', req.userId)
+        .eq('addressee_id', target.id)
+        .maybeSingle(),
+      supabase
+        .from('friendships')
+        .select(friendshipSelect())
+        .eq('requester_id', target.id)
+        .eq('addressee_id', req.userId)
+        .maybeSingle(),
+    ]);
 
-  if (error) {
-    if (error.code === '23505') {
-      res.status(409).json({ error: 'Request already exists or you are already friends.' });
-    } else {
-      res.status(500).json({ error: error.message });
+    if (outgoingResult.error || incomingResult.error) {
+      res.status(500).json({
+        error: outgoingResult.error?.message ?? incomingResult.error?.message ?? 'Failed to check friendship.',
+      });
+      return;
     }
-    return;
-  }
 
-  res.status(201).json({ friendshipId: data.id });
+    const outgoing = outgoingResult.data as FriendshipRow | null;
+    const incoming = incomingResult.data as FriendshipRow | null;
+
+    const accepted = [outgoing, incoming].find((f) => f?.status === 'accepted');
+    if (accepted) {
+      res.json({ friendshipId: accepted.id, status: 'accepted', alreadyFriends: true });
+      return;
+    }
+
+    if (incoming?.status === 'pending') {
+      const { data: acceptedFriendship, error: acceptError } = await supabase
+        .from('friendships')
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
+        .eq('id', incoming.id)
+        .select('id')
+        .single();
+
+      if (acceptError) {
+        res.status(500).json({ error: acceptError.message });
+        return;
+      }
+
+      if (outgoing?.status === 'pending') {
+        await supabase
+          .from('friendships')
+          .delete()
+          .eq('id', outgoing.id);
+      }
+
+      res.json({ friendshipId: acceptedFriendship.id, status: 'accepted' });
+      return;
+    }
+
+    if (outgoing?.status === 'pending') {
+      res.json({ friendshipId: outgoing.id, status: 'pending', alreadyPending: true });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('friendships')
+      .insert({ requester_id: req.userId, addressee_id: target.id, status: 'pending' })
+      .select('id')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        res.json({ status: 'pending', alreadyPending: true });
+      } else {
+        res.status(500).json({ error: error.message });
+      }
+      return;
+    }
+
+    res.status(201).json({ friendshipId: data.id, status: 'pending' });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[friends] request error:', message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to send friend request.' });
+    }
+  }
 });
 
 /** POST /api/friends/:id/accept — accept a pending request */

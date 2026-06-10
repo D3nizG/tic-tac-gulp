@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore.js';
-import { getSocket } from '../stores/socketStore.js';
+import { getSocket, leavePregameRoomIfNeeded } from '../stores/socketStore.js';
 import LobbyView from '../components/LobbyView.js';
 import GameView from '../components/GameView.js';
 
@@ -37,24 +37,12 @@ export default function RoomPage() {
   }, [code, sessionId]);
 
   useEffect(() => {
-    function leavePregameRoom() {
-      const state = useGameStore.getState();
-      const status = state.gameState?.status;
-      if (status !== 'WAITING' && status !== 'LOBBY') return;
-
-      const socket = getSocket();
-      if (socket.connected) socket.disconnect();
-      localStorage.removeItem('ttg_sessionId');
-      localStorage.removeItem('ttg_roomCode');
-      state.reset();
-    }
-
-    window.addEventListener('popstate', leavePregameRoom);
-    window.addEventListener('pagehide', leavePregameRoom);
+    window.addEventListener('popstate', leavePregameRoomIfNeeded);
+    window.addEventListener('pagehide', leavePregameRoomIfNeeded);
 
     return () => {
-      window.removeEventListener('popstate', leavePregameRoom);
-      window.removeEventListener('pagehide', leavePregameRoom);
+      window.removeEventListener('popstate', leavePregameRoomIfNeeded);
+      window.removeEventListener('pagehide', leavePregameRoomIfNeeded);
     };
   }, []);
 

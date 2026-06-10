@@ -54,7 +54,11 @@ interface FriendsState {
   fetchFriends: () => Promise<void>;
   fetchRequests: () => Promise<void>;
   fetchInvites: () => Promise<void>;
-  sendRequest: (username: string) => Promise<{ error: string | null }>;
+  sendRequest: (username: string) => Promise<{
+    error: string | null;
+    status?: 'pending' | 'accepted';
+    friendshipId?: string;
+  }>;
   acceptRequest: (friendshipId: string) => Promise<void>;
   removeOrCancel: (friendshipId: string) => Promise<void>;
   searchUsers: (q: string) => Promise<void>;
@@ -127,9 +131,21 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
         headers: authHeaders(token),
         body: JSON.stringify({ username }),
       });
-      const data = await res.json();
-      if (!res.ok) return { error: data.error ?? 'Failed to send request.' };
-      return { error: null };
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = data.error ?? 'Failed to send request.';
+        if (res.status === 409 && /already|exists/i.test(message)) {
+          await Promise.all([get().fetchFriends(), get().fetchRequests()]);
+          return { error: null, status: 'pending' };
+        }
+        return { error: message };
+      }
+      await Promise.all([get().fetchFriends(), get().fetchRequests()]);
+      return {
+        error: null,
+        status: data.status,
+        friendshipId: data.friendshipId,
+      };
     } catch {
       return { error: 'Network error.' };
     }

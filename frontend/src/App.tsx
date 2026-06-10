@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage.js';
 import InviteToast from './components/InviteToast.js';
 import { useAuthStore } from './stores/authStore.js';
+import { leavePregameRoomIfNeeded } from './stores/socketStore.js';
 
 // Lazy-load heavy pages so Three.js / R3F only initializes when needed
 const RoomPage = lazy(() => import('./pages/RoomPage.js'));
@@ -40,6 +41,13 @@ function OwnProfileRedirect() {
 }
 
 export default function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/room/')) return;
+    leavePregameRoomIfNeeded();
+  }, [location.pathname]);
+
   return (
     <>
     <InviteToast />

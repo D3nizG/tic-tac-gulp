@@ -140,6 +140,19 @@ export function joinRoomSession(
   }
 }
 
+/** Leaves a waiting/lobby room without affecting games already in progress. */
+export function leavePregameRoomIfNeeded(): boolean {
+  const state = useGameStore.getState();
+  const status = state.gameState?.status;
+  if (status !== 'WAITING' && status !== 'LOBBY') return false;
+
+  if (socket?.connected) socket.disconnect();
+  localStorage.removeItem('ttg_sessionId');
+  localStorage.removeItem('ttg_roomCode');
+  state.reset();
+  return true;
+}
+
 /** Emits a game start request (host only). */
 export function emitStartGame() {
   const { sessionId, roomCode } = useGameStore.getState();

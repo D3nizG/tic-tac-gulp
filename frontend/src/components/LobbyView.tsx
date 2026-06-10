@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../stores/gameStore.js';
-import { emitStartGame } from '../stores/socketStore.js';
+import { emitStartGame, getSocket } from '../stores/socketStore.js';
 import HowToPlayOverlay from './HowToPlayOverlay.js';
 import FriendsPanel from './FriendsPanel.js';
 
 export default function LobbyView() {
+  const navigate = useNavigate();
   const gameState = useGameStore((s) => s.gameState);
   const yourPlayerId = useGameStore((s) => s.yourPlayerId);
+  const reset = useGameStore((s) => s.reset);
   const [copied, setCopied] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
@@ -15,14 +18,22 @@ export default function LobbyView() {
   if (!gameState) return null;
 
   const { players, roomCode } = gameState;
-  const isHost = yourPlayerId === 'P1';
   const p2Joined = players.P2.displayName !== '';
-  const canStart = isHost && p2Joined;
+  const canStart = p2Joined;
 
   function copyCode() {
     navigator.clipboard.writeText(roomCode).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+  }
+
+  function leaveLobby() {
+    const socket = getSocket();
+    if (socket.connected) socket.disconnect();
+    localStorage.removeItem('ttg_sessionId');
+    localStorage.removeItem('ttg_roomCode');
+    reset();
+    navigate('/');
   }
 
   return (
@@ -229,44 +240,58 @@ export default function LobbyView() {
         </AnimatePresence>
       </div>
 
-      {/* Start / waiting message */}
+      {/* Start / leave controls */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}
       >
-        {isHost ? (
+        {canStart ? (
           <motion.button
-            onClick={canStart ? emitStartGame : undefined}
-            disabled={!canStart}
-            whileHover={canStart ? { scale: 1.04 } : {}}
-            whileTap={canStart ? { scale: 0.96 } : {}}
-            animate={canStart ? {
+            onClick={emitStartGame}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            animate={{
               boxShadow: ['0 0 0px rgba(37,99,235,0)', '0 0 24px rgba(37,99,235,0.5)', '0 0 0px rgba(37,99,235,0)'],
-            } : {}}
-            transition={canStart ? { repeat: Infinity, duration: 2, ease: 'easeInOut' } : {}}
+            }}
+            transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
             style={{
               padding: '0.975rem 3rem',
               borderRadius: '0.75rem',
-              border: canStart ? 'none' : '1px solid var(--border)',
-              background: canStart
-                ? 'linear-gradient(135deg, var(--p1-primary) 0%, #1d4ed8 100%)'
-                : 'var(--surface)',
-              color: canStart ? '#fff' : 'var(--text-muted)',
+              border: 'none',
+              background: 'linear-gradient(135deg, var(--p1-primary) 0%, #1d4ed8 100%)',
+              color: '#fff',
               fontWeight: 700,
               fontSize: '1.05rem',
               fontFamily: 'var(--font-display)',
-              cursor: canStart ? 'pointer' : 'not-allowed',
+              cursor: 'pointer',
               letterSpacing: '0.04em',
             } as React.CSSProperties}
           >
-            {canStart ? 'Start Game' : 'Waiting for opponent…'}
+            Start Game
           </motion.button>
         ) : (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Waiting for the host to start…
+            Waiting for opponent…
           </p>
         )}
+        <button
+          onClick={leaveLobby}
+          style={{
+            padding: '0.65rem 1.25rem',
+            borderRadius: '0.625rem',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'transparent',
+            color: 'var(--text-muted)',
+            fontWeight: 600,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-display)',
+          }}
+        >
+          Leave Lobby
+        </button>
       </motion.div>
     </main>
     </>

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const STEPS = [
   {
     id: 'goal',
     title: 'The Goal',
-    subtitle: 'Get 3 in a row — but pieces can be stolen.',
+    subtitle: 'Get 3 in a row — but larger pieces can gulp smaller ones.',
     content: <GoalStep />,
   },
   {
@@ -318,13 +318,13 @@ function PiecesStep() {
 function GulpStep() {
   const [phase, setPhase] = useState<0 | 1 | 2>(0);
 
-  // Auto-animate
-  useState(() => {
-    const t1 = setTimeout(() => setPhase(1), 800);
-    const t2 = setTimeout(() => setPhase(2), 1600);
-    const t3 = setTimeout(() => setPhase(0), 3200);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  });
+  // Keep the gulp example moving while this page is open.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setPhase((p) => (p === 2 ? 0 : ((p + 1) as 0 | 1 | 2)));
+    }, 900);
+    return () => window.clearInterval(interval);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
@@ -415,7 +415,7 @@ function WinStep() {
         {[
           { color: 'P2', size: 28 }, { color: 'P1', size: 20 }, { color: 'P1', size: 36 },
           { color: 'P1', size: 20 }, { color: 'P1', size: 36 }, { color: 'P2', size: 20 },
-          { color: 'P2', size: 28 }, { color: 'P2', size: 20 }, { color: 'P1', size: 28 },
+          { color: 'P1', size: 28 }, { color: 'P2', size: 20 }, { color: 'P1', size: 28 },
         ].map((cell, i) => {
           // Top-right → middle → bottom-left diagonal win for P1 (indices 2, 4, 6)
           const isWin = [2, 4, 6].includes(i) && cell.color === 'P1';
@@ -443,11 +443,10 @@ function WinStep() {
         })}
       </div>
       <p style={{ fontSize: '0.78rem', color: 'rgba(37,99,235,0.9)', fontWeight: 600, margin: 0, letterSpacing: '0.04em' }}>
-        Blue wins — but the gulped piece under index 2 still counts!
+        Blue wins with the visible diagonal.
       </p>
       <p style={{ fontSize: '0.73rem', color: 'var(--text-muted)', margin: 0, textAlign: 'center', lineHeight: 1.4 }}>
-        A gulped piece that would complete a line doesn't count.<br />
-        The top piece's owner claims the cell.
+        Only the piece on top controls a square.
       </p>
     </div>
   );

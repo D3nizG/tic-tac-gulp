@@ -18,7 +18,7 @@ import type { GameState, MoveEvent } from '../types.js';
 function makeGame(): GameState {
   const s = createInitialState('TESTXX', 'Alice', 'sess-alice');
   const s2 = addSecondPlayer(s, 'Bob', 'sess-bob');
-  return startGame(s2);
+  return startGame(s2, 'P1');
 }
 
 function move(
@@ -285,7 +285,8 @@ describe('resetGameState', () => {
     const reset = resetGameState(g);
     expect(reset.status).toBe('IN_PROGRESS');
     expect(reset.moveCount).toBe(0);
-    expect(reset.currentTurn).toBe('P1');
+    expect(reset.startingPlayer).toBe('P2');
+    expect(reset.currentTurn).toBe('P2');
     expect(reset.players.P1.inventory).toEqual({ small: 3, medium: 3, large: 3 });
     expect(reset.players.P2.inventory).toEqual({ small: 3, medium: 3, large: 3 });
     expect(reset.board[0][0].stack).toHaveLength(0);

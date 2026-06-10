@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { io as ioclient, type Socket } from 'socket.io-client';
 import supertest from 'supertest';
 import { createServer } from '../server.js';
+import { roomStore } from '../store/roomStore.js';
 import type { Server } from 'http';
 import type { Server as SocketServer } from 'socket.io';
 import type { AddressInfo } from 'net';
@@ -16,7 +17,10 @@ let httpServer: Server;
 let ioServer: SocketServer;
 
 beforeAll(async () => {
-  const { app, httpServer: s, io } = createServer({ forfeitTimeoutMs: FORFEIT_MS });
+  const { app, httpServer: s, io } = createServer({
+    forfeitTimeoutMs: FORFEIT_MS,
+    startingPlayer: 'P1',
+  });
   httpServer = s;
   ioServer = io;
   request = supertest(app);
@@ -284,13 +288,15 @@ describe('game:start', () => {
     }
   });
 
-  it('non-host (P2) cannot start the game', async () => {
+  it('either player can start the game once both players are present', async () => {
     const { roomCode, p2Session, p1Socket, p2Socket } = await setupRoom();
     try {
-      const errorPromise = waitForEvent<any>(p2Socket, 'error');
+      const p1Started = waitForEvent<any>(p1Socket, 'game:started');
+      const p2Started = waitForEvent<any>(p2Socket, 'game:started');
       p2Socket.emit('game:start', { sessionId: p2Session, roomCode });
-      const err = await errorPromise;
-      expect(err.code).toBe('SESSION_INVALID');
+      const [p1Data, p2Data] = await Promise.all([p1Started, p2Started]);
+      expect(p1Data.gameState.status).toBe('IN_PROGRESS');
+      expect(p2Data.gameState.status).toBe('IN_PROGRESS');
     } finally {
       p1Socket.disconnect();
       p2Socket.disconnect();
@@ -428,41 +434,36 @@ describe('game:ended', () => {
 // ─── disconnect & forfeit ─────────────────────────────────────────────────────
 
 describe('disconnect & forfeit', () => {
-  it('disconnect sends player:disconnected to the other player', async () => {
+  it('guest disconnect ends the game immediately with a forfeit', async () => {
     const { p1Socket, p2Socket } = await setupGame();
     try {
-      const disconnectedPromise = waitForEvent<any>(p2Socket, 'player:disconnected');
+      const endedPromise = waitForEvent<any>(p2Socket, 'game:ended');
       p1Socket.disconnect();
-      const data = await disconnectedPromise;
-      expect(data.playerId).toBe('P1');
-      expect(typeof data.timeoutSeconds).toBe('number');
+      const ended = await endedPromise;
+      expect(ended.winner).toBe('P2');
+      expect(ended.reason).toBe('forfeit');
     } finally {
       p2Socket.disconnect();
     }
   });
 
-  it('forfeit fires game:ended after timeout expires', async () => {
-    const { p1Socket, p2Socket } = await setupGame();
-
-    const disconnectedPromise = waitForEvent<any>(p2Socket, 'player:disconnected');
-    p1Socket.disconnect();
-    await disconnectedPromise;
-
-    // Forfeit timeout is FORFEIT_MS (150ms) — wait up to 2s for the event
-    const ended = await waitForEvent<any>(p2Socket, 'game:ended', 2000);
-    expect(ended.winner).toBe('P2');
-    expect(ended.reason).toBe('forfeit');
-    p2Socket.disconnect();
-  });
-
-  it('reconnecting before timeout cancels the forfeit', async () => {
+  it('authenticated disconnect gets a three-turn grace and reconnect clears it', async () => {
     const { roomCode, p1Session, p1Socket, p2Socket } = await setupGame();
+    const state = roomStore.get(roomCode)!;
+    roomStore.set(roomCode, {
+      ...state,
+      players: {
+        P1: { ...state.players.P1, userId: '00000000-0000-0000-0000-000000000001' },
+        P2: { ...state.players.P2, userId: '00000000-0000-0000-0000-000000000002' },
+      },
+    });
 
     const disconnectedPromise = waitForEvent<any>(p2Socket, 'player:disconnected');
     p1Socket.disconnect();
-    await disconnectedPromise;
+    const disconnected = await disconnectedPromise;
+    expect(disconnected.playerId).toBe('P1');
+    expect(disconnected.graceTurns).toBe(3);
 
-    // Reconnect immediately (well within FORFEIT_MS)
     const newP1Socket = await connectSocket();
     try {
       const rejoinedPromise = waitForEvent<any>(newP1Socket, 'room:joined');
@@ -470,9 +471,7 @@ describe('disconnect & forfeit', () => {
       newP1Socket.emit('room:rejoin', { sessionId: p1Session, roomCode });
       await Promise.all([rejoinedPromise, reconnectedPromise]);
 
-      // Wait past the original timeout and confirm game:ended does NOT fire
-      const endedPromise = waitForEvent<any>(p2Socket, 'game:ended', FORFEIT_MS * 3);
-      await expect(endedPromise).rejects.toThrow(/Timed out/);
+      expect(roomStore.get(roomCode)?.disconnectGrace).toBeUndefined();
     } finally {
       newP1Socket.disconnect();
       p2Socket.disconnect();

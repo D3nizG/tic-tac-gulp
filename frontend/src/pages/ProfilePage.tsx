@@ -21,6 +21,8 @@ interface UserProfile {
   wins: number;
   losses: number;
   draws: number;
+  gulps: number;
+  canViewRecentGames: boolean;
 }
 
 interface MatchRecord {
@@ -50,6 +52,10 @@ export default function ProfilePage() {
   // Friend actions
   const [friendAction, setFriendAction] = useState<'idle' | 'sending' | 'sent' | 'removing'>('idle');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [usernameSaveError, setUsernameSaveError] = useState('');
+  const [usernameSaving, setUsernameSaving] = useState(false);
 
   useEffect(() => {
     // If no username param, fetch own profile first
@@ -74,14 +80,19 @@ export default function ProfilePage() {
     setLoading(true);
     setError('');
 
-    Promise.all([
-      fetch(`${SOCKET_URL}/api/users/${usernameParam}`, { headers: authHeaders(token) }).then((r) => r.json()),
-      fetch(`${SOCKET_URL}/api/users/${usernameParam}/matches?limit=10`, { headers: authHeaders(token) }).then((r) => r.json()),
-    ])
-      .then(([profileData, matchData]) => {
+    fetch(`${SOCKET_URL}/api/users/${usernameParam}`, { headers: authHeaders(token) })
+      .then((r) => r.json())
+      .then(async (profileData) => {
         if (profileData.error) { setError(profileData.error); return; }
         setProfile(profileData);
-        setMatches(Array.isArray(matchData) ? matchData : []);
+        setUsernameDraft(profileData.username);
+        if (profileData.canViewRecentGames) {
+          const matchData = await fetch(`${SOCKET_URL}/api/users/${usernameParam}/matches?limit=10`, { headers: authHeaders(token) })
+            .then((r) => r.ok ? r.json() : []);
+          setMatches(Array.isArray(matchData) ? matchData : []);
+        } else {
+          setMatches([]);
+        }
       })
       .catch(() => setError('Failed to load profile.'))
       .finally(() => setLoading(false));
@@ -127,6 +138,32 @@ export default function ProfilePage() {
     await removeOrCancel(existingFriendship.friendshipId);
     setFriendAction('idle');
     setConfirmRemove(false);
+  }
+
+  async function handleSaveUsername() {
+    const trimmed = usernameDraft.trim();
+    if (trimmed.length < 3 || trimmed.length > 20) return;
+    setUsernameSaving(true);
+    setUsernameSaveError('');
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/users/me`, {
+        method: 'PUT',
+        headers: authHeaders(getToken()),
+        body: JSON.stringify({ username: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUsernameSaveError(data.error ?? 'Failed to save username.');
+        return;
+      }
+      setProfile((current) => current ? { ...current, username: data.username } : current);
+      setEditingUsername(false);
+      navigate(`/profile/${data.username}`, { replace: true });
+    } catch {
+      setUsernameSaveError('Network error. Please try again.');
+    } finally {
+      setUsernameSaving(false);
+    }
   }
 
   return (
@@ -188,15 +225,94 @@ export default function ProfilePage() {
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h1 style={{ margin: '0 0 0.25rem', fontSize: '1.5rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
-                {profile.username}
-              </h1>
+              {isOwnProfile && editingUsername ? (
+                <div>
+                  <input
+                    value={usernameDraft}
+                    onChange={(e) => setUsernameDraft(e.target.value)}
+                    maxLength={20}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.6rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(255,255,255,0.05)',
+                      color: 'var(--text)',
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '1rem',
+                      fontWeight: 800,
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveUsername();
+                      if (e.key === 'Escape') {
+                        setEditingUsername(false);
+                        setUsernameDraft(profile.username);
+                      }
+                    }}
+                  />
+                  {usernameSaveError && (
+                    <p style={{ margin: '0.35rem 0 0', color: '#f87171', fontSize: '0.72rem' }}>
+                      {usernameSaveError}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <h1 style={{ margin: '0 0 0.25rem', fontSize: '1.5rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
+                  {profile.username}
+                </h1>
+              )}
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                 Joined {new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </p>
             </div>
 
             {/* Friend / own profile button */}
+            {isOwnProfile && (
+              <div style={{ flexShrink: 0, display: 'flex', gap: '0.375rem' }}>
+                {editingUsername ? (
+                  <>
+                    <button
+                      onClick={handleSaveUsername}
+                      disabled={usernameSaving || usernameDraft.trim().length < 3}
+                      style={{
+                        padding: '0.4rem 0.75rem', borderRadius: '0.5rem', border: 'none',
+                        background: 'var(--p1-primary)', color: '#fff',
+                        fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      {usernameSaving ? '...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => { setEditingUsername(false); setUsernameDraft(profile.username); setUsernameSaveError(''); }}
+                      style={{
+                        padding: '0.4rem 0.625rem', borderRadius: '0.5rem',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'transparent', color: 'var(--text-muted)',
+                        fontSize: '0.78rem', cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setEditingUsername(true)}
+                    style={{
+                      padding: '0.4rem 1rem', borderRadius: '0.5rem',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'var(--text-muted)', fontSize: '0.82rem',
+                      fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'var(--font-display)',
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            )}
             {!isOwnProfile && user && (
               <div style={{ flexShrink: 0 }}>
                 {existingFriendship ? (
@@ -263,12 +379,13 @@ export default function ProfilePage() {
           </div>
 
           {/* Stats row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.6rem' }}>
             {[
-              { label: 'ELO', value: profile.elo, color: 'var(--highlight)' },
               { label: 'Wins', value: profile.wins, color: '#4ade80' },
               { label: 'Losses', value: profile.losses, color: '#f87171' },
+              { label: 'Ties', value: profile.draws, color: '#94a3b8' },
               { label: 'Win %', value: `${winRate}%`, color: 'var(--text)' },
+              { label: 'Gulps', value: profile.gulps, color: 'var(--highlight)' },
             ].map(({ label, value, color }) => (
               <div
                 key={label}
@@ -301,7 +418,18 @@ export default function ProfilePage() {
             Recent Matches
           </h2>
 
-          {matches.length === 0 ? (
+          {!profile.canViewRecentGames ? (
+            <div style={{
+              padding: '2rem',
+              background: 'rgba(20,28,51,0.6)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '1rem',
+              textAlign: 'center',
+              color: 'var(--text-muted)', fontSize: '0.875rem',
+            }}>
+              Recent games are visible to friends only.
+            </div>
+          ) : matches.length === 0 ? (
             <div style={{
               padding: '2rem',
               background: 'rgba(20,28,51,0.6)',

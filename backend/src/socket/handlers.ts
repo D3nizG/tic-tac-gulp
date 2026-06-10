@@ -40,6 +40,18 @@ function clearTurnTimer(roomCode: string) {
   if (h) { clearTimeout(h); turnTimers.delete(roomCode); }
 }
 
+function maybeApplyDisconnectForfeit(state: GameState): GameState {
+  const grace = state.disconnectGrace;
+  if (!grace || state.status !== 'IN_PROGRESS') return state;
+  if (state.players[grace.playerId].connected) {
+    return { ...state, disconnectGrace: undefined };
+  }
+  if (state.moveCount >= grace.expiresAtMove) {
+    return forfeitGame({ ...state, disconnectGrace: undefined }, grace.playerId);
+  }
+  return state;
+}
+
 /** Strips server-private fields before sending state to clients. */
 function sanitizeState(state: ReturnType<typeof roomStore.get>) {
   if (!state) return null;
@@ -67,6 +79,7 @@ function startTurnTimer(io: Server, roomCode: string) {
     if (state.status === 'IN_PROGRESS') {
       state = { ...state, turnStartedAt: now };
     }
+    state = maybeApplyDisconnectForfeit(state);
     roomStore.set(roomCode, state);
     io.to(roomCode).emit('game:state', { gameState: sanitizeState(state) });
     if (state.status === 'ENDED') {
@@ -86,7 +99,7 @@ function startTurnTimer(io: Server, roomCode: string) {
 
 export function registerSocketHandlers(
   io: Server,
-  options: { forfeitTimeoutMs?: number } = {}
+  options: { forfeitTimeoutMs?: number; startingPlayer?: PlayerId } = {}
 ) {
   const FORFEIT_TIMEOUT_MS = options.forfeitTimeoutMs ?? 60_000;
   io.on('connection', (socket: Socket) => {
@@ -206,6 +219,9 @@ export function registerSocketHandlers(
           ...state.players,
           [playerId]: { ...state.players[playerId], socketId: socket.id, connected: true },
         },
+        disconnectGrace: state.disconnectGrace?.playerId === playerId
+          ? undefined
+          : state.disconnectGrace,
       };
       roomStore.set(roomCode, state);
 
@@ -231,8 +247,12 @@ export function registerSocketHandlers(
       let state = roomStore.get(roomCode);
       if (!state) return;
 
-      if (state.players.P1.sessionId !== sessionId) {
-        socket.emit('error', { message: 'Only the host can start the game.', code: 'SESSION_INVALID' });
+      const playerId: PlayerId | null =
+        state.players.P1.sessionId === sessionId ? 'P1' :
+        state.players.P2.sessionId === sessionId ? 'P2' : null;
+
+      if (!playerId) {
+        socket.emit('error', { message: 'Invalid session.', code: 'SESSION_INVALID' });
         return;
       }
       if (state.status !== 'LOBBY') {
@@ -244,7 +264,7 @@ export function registerSocketHandlers(
         return;
       }
 
-      state = startGame(state);
+      state = startGame(state, options.startingPlayer);
       roomStore.set(roomCode, state);
 
       io.to(roomCode).emit('game:started', { gameState: sanitizeState(state) });
@@ -294,6 +314,7 @@ export function registerSocketHandlers(
         if (state.status === 'IN_PROGRESS') {
           state = { ...state, turnStartedAt: Date.now() };
         }
+        state = maybeApplyDisconnectForfeit(state);
         roomStore.set(roomCode, state);
 
         clearTurnTimer(roomCode);
@@ -432,27 +453,35 @@ export function registerSocketHandlers(
       };
       roomStore.set(roomCode, state);
 
+      if (state.status === 'IN_PROGRESS' && !state.players[playerId].userId) {
+        state = forfeitGame(state, playerId);
+        roomStore.set(roomCode, state);
+        clearTurnTimer(roomCode);
+        io.to(roomCode).emit('game:ended', {
+          gameState: sanitizeState(state),
+          winner: state.winner,
+          reason: 'forfeit',
+        });
+        recordMatch(state, state.players.P1.userId ?? null, state.players.P2.userId ?? null)
+          .catch((err: Error) => console.error('[handlers] recordMatch error:', err.message));
+        return;
+      }
+
+      if (state.status === 'IN_PROGRESS') {
+        state = {
+          ...state,
+          disconnectGrace: {
+            playerId,
+            expiresAtMove: state.moveCount + 3,
+          },
+        };
+        roomStore.set(roomCode, state);
+      }
+
       socket.to(roomCode).emit('player:disconnected', {
         playerId,
         timeoutSeconds: FORFEIT_TIMEOUT_MS / 1000,
-      });
-
-      // Clear turn timer while player is disconnected
-      clearTurnTimer(roomCode);
-
-      // Start forfeit timer
-      roomStore.startForfeitTimer(sessionId, FORFEIT_TIMEOUT_MS, () => {
-        let s = roomStore.get(roomCode);
-        if (!s || s.status === 'ENDED') return;
-        s = forfeitGame(s, playerId);
-        roomStore.set(roomCode, s);
-        io.to(roomCode).emit('game:ended', {
-          gameState: sanitizeState(s),
-          winner: s.winner,
-          reason: 'forfeit',
-        });
-        recordMatch(s, s.players.P1.userId ?? null, s.players.P2.userId ?? null)
-          .catch((err: Error) => console.error('[handlers] recordMatch error:', err.message));
+        graceTurns: state.status === 'IN_PROGRESS' ? 3 : undefined,
       });
     });
   });

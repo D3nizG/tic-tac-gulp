@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLocalStore } from '../stores/localStore.js';
 import LocalGameScene from '../scene/LocalGameScene.js';
 import PassScreen from '../components/PassScreen.js';
+import HowToPlayOverlay from '../components/HowToPlayOverlay.js';
 import type { PlayerId, PieceSize } from '@tic-tac-gulp/shared';
 
 const PLAYER_COLORS: Record<PlayerId, { primary: string; glow: string }> = {
@@ -19,6 +20,7 @@ const TURN_LIMIT = 13;
 function SetupScreen({ onStart }: { onStart: (p1: string, p2: string) => void }) {
   const [p1, setP1] = useState('');
   const [p2, setP2] = useState('');
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
   const navigate = useNavigate();
 
   const valid = (s: string) => s.trim().length >= 2 && s.trim().length <= 16;
@@ -130,6 +132,24 @@ function SetupScreen({ onStart }: { onStart: (p1: string, p2: string) => void })
         </button>
 
         <button
+          onClick={() => setShowHowToPlay(true)}
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '0.75rem',
+            color: 'var(--text-muted)',
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: 'var(--font-display)',
+            padding: '0.75rem',
+            letterSpacing: '0.03em',
+          }}
+        >
+          How to Play
+        </button>
+
+        <button
           onClick={() => navigate('/')}
           style={{
             background: 'transparent',
@@ -143,6 +163,9 @@ function SetupScreen({ onStart }: { onStart: (p1: string, p2: string) => void })
           ← Back
         </button>
       </motion.div>
+      <AnimatePresence>
+        {showHowToPlay && <HowToPlayOverlay onClose={() => setShowHowToPlay(false)} />}
+      </AnimatePresence>
     </div>
   );
 }
@@ -399,6 +422,7 @@ export default function LocalGamePage() {
   const passMode = useLocalStore((s) => s.passMode);
   const initGame = useLocalStore((s) => s.initGame);
   const reset = useLocalStore((s) => s.reset);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
   const navigate = useNavigate();
 
   // Clean up on unmount
@@ -421,6 +445,10 @@ export default function LocalGamePage() {
       display: 'flex', flexDirection: 'column', height: '100dvh',
       background: 'var(--bg)', overflow: 'hidden', position: 'relative',
     }}>
+      <AnimatePresence>
+        {showHowToPlay && <HowToPlayOverlay onClose={() => setShowHowToPlay(false)} />}
+      </AnimatePresence>
+
       {/* Opponent panel (top) */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -438,6 +466,33 @@ export default function LocalGamePage() {
             {gameState.players[currentTurn].displayName}'s turn
           </div>
           <LocalGameTimer />
+          <button
+            onClick={() => setShowHowToPlay(true)}
+            title="How to play"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--text-muted)',
+              borderRadius: '50%', width: '1.625rem', height: '1.625rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+              fontFamily: 'var(--font-display)',
+              flexShrink: 0,
+              transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(37,99,235,0.18)';
+              e.currentTarget.style.borderColor = 'rgba(37,99,235,0.5)';
+              e.currentTarget.style.color = 'var(--text)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }}
+          >
+            ?
+          </button>
         </div>
       </div>
 

@@ -32,22 +32,38 @@ export default function LoginPage() {
 
   const from = (location.state as { from?: string })?.from ?? '/';
 
-  // When user signs in, check for existing profile
+  // When user signs in, check for existing profile.
   useEffect(() => {
     if (!user) return;
     const token = getToken();
+    if (!token) {
+      setError('Sign-in session is not ready yet. Try again in a moment.');
+      return;
+    }
     fetch(`${SOCKET_URL}/api/users/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        return { ok: r.ok, status: r.status, data };
+      })
       .then((data) => {
-        if (data.username) {
+        if (data.ok && data.data.username) {
           navigate(from, { replace: true });
-        } else {
+        } else if (data.status === 404 && data.data.code === 'PROFILE_NOT_FOUND') {
           setUsernamePrompt(true);
+        } else if (data.status === 401) {
+          setUsernamePrompt(false);
+          setError('Sign-in worked, but the game API rejected the session.');
+        } else {
+          setUsernamePrompt(false);
+          setError('Could not load your profile.');
         }
       })
-      .catch(() => setUsernamePrompt(true));
+      .catch(() => {
+        setUsernamePrompt(false);
+        setError('Could not reach the game API.');
+      });
   }, [user]);
 
   async function handleEmailAuth() {
@@ -71,6 +87,11 @@ export default function LoginPage() {
     setUsernameLoading(true);
     setUsernameError('');
     const token = getToken();
+    if (!token) {
+      setUsernameError('Sign in again to save a profile username.');
+      setUsernameLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`${SOCKET_URL}/api/users/me`, {
         method: 'PUT',
@@ -79,6 +100,10 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) {
+          setUsernameError('The game API rejected this session. Check backend Supabase config.');
+          return;
+        }
         setUsernameError(data.error ?? 'Failed to save username.');
         return;
       }
@@ -255,7 +280,7 @@ export default function LoginPage() {
                 borderRadius: '0.75rem',
                 fontSize: '0.85rem',
               }}>
-                <span>Signed in as <strong>{user.email}</strong></span>
+                <span>Signed in</span>
                 <button
                   onClick={signOut}
                   style={{

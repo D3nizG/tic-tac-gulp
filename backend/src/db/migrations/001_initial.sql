@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS public.matches (
   end_reason  TEXT CHECK (end_reason IN ('normal', 'forfeit', 'resign', 'draw')),
   move_count  INT,
   duration_ms INT,
+  p1_gulps    INT DEFAULT 0 NOT NULL,
+  p2_gulps    INT DEFAULT 0 NOT NULL,
   played_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.ratings (
   wins        INT DEFAULT 0 NOT NULL,
   losses      INT DEFAULT 0 NOT NULL,
   draws       INT DEFAULT 0 NOT NULL,
+  gulps       INT DEFAULT 0 NOT NULL,
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -4,6 +4,27 @@ import { getSupabase } from '../db/supabase.js';
 
 export const usersRouter = Router();
 
+async function canViewRecentGames(
+  supabase: ReturnType<typeof getSupabase>,
+  viewerId: string | undefined,
+  profileUserId: string
+): Promise<boolean> {
+  if (!viewerId) return false;
+  if (viewerId === profileUserId) return true;
+  if (!supabase) return false;
+
+  const { data } = await supabase
+    .from('friendships')
+    .select('id, requester_id, addressee_id')
+    .eq('status', 'accepted')
+    .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`);
+
+  return (data ?? []).some((f) =>
+    (f.requester_id === viewerId && f.addressee_id === profileUserId)
+    || (f.addressee_id === viewerId && f.requester_id === profileUserId)
+  );
+}
+
 /**
  * GET /api/users/me
  * Returns the authenticated user's profile from public.users.
@@ -30,7 +51,7 @@ usersRouter.get('/me', requireAuth, async (req, res) => {
   // Fetch ratings
   const { data: ratingData } = await supabase
     .from('ratings')
-    .select('elo, wins, losses, draws')
+    .select('elo, wins, losses, draws, gulps')
     .eq('user_id', req.userId)
     .single();
 
@@ -40,6 +61,8 @@ usersRouter.get('/me', requireAuth, async (req, res) => {
     wins: ratingData?.wins ?? 0,
     losses: ratingData?.losses ?? 0,
     draws: ratingData?.draws ?? 0,
+    gulps: ratingData?.gulps ?? 0,
+    canViewRecentGames: true,
   });
 });
 
@@ -90,7 +113,7 @@ usersRouter.put('/me', requireAuth, async (req, res) => {
     .from('ratings')
     .upsert({ user_id: req.userId }, { onConflict: 'user_id', ignoreDuplicates: true });
 
-  res.json({ ...data, elo: 1200, wins: 0, losses: 0, draws: 0 });
+  res.json({ ...data, elo: 1200, wins: 0, losses: 0, draws: 0, gulps: 0, canViewRecentGames: true });
 });
 
 /**
@@ -143,13 +166,17 @@ usersRouter.get('/:username/matches', optionalAuth, async (req, res) => {
     .single();
 
   if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
+  if (!(await canViewRecentGames(supabase, req.userId, user.id))) {
+    res.status(403).json({ error: 'Recent matches are visible to friends only.' });
+    return;
+  }
 
   const limit = Math.min(Number(req.query.limit ?? 10), 50);
   const offset = Number(req.query.offset ?? 0);
 
   const { data: matches, error } = await supabase
     .from('matches')
-    .select('id, p1_user_id, p2_user_id, winner_user_id, end_reason, move_count, duration_ms, played_at')
+    .select('id, p1_user_id, p2_user_id, winner_id, end_reason, move_count, duration_ms, played_at')
     .or(`p1_user_id.eq.${user.id},p2_user_id.eq.${user.id}`)
     .order('played_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -169,7 +196,7 @@ usersRouter.get('/:username/matches', optionalAuth, async (req, res) => {
   res.json(
     (matches ?? []).map((m) => {
       const opponentId = m.p1_user_id === user.id ? m.p2_user_id : m.p1_user_id;
-      const result = m.winner_user_id === user.id ? 'W' : m.winner_user_id === null ? 'D' : 'L';
+      const result = m.winner_id === user.id ? 'W' : m.winner_id === null ? 'D' : 'L';
       return {
         id: m.id,
         opponentUsername: opponentId ? opMap[opponentId] ?? null : null,
@@ -207,9 +234,10 @@ usersRouter.get('/:username', optionalAuth, async (req, res) => {
 
   const { data: ratingData } = await supabase
     .from('ratings')
-    .select('elo, wins, losses, draws')
+    .select('elo, wins, losses, draws, gulps')
     .eq('user_id', data.id)
     .single();
+  const canView = await canViewRecentGames(supabase, req.userId, data.id);
 
   res.json({
     ...data,
@@ -217,5 +245,7 @@ usersRouter.get('/:username', optionalAuth, async (req, res) => {
     wins: ratingData?.wins ?? 0,
     losses: ratingData?.losses ?? 0,
     draws: ratingData?.draws ?? 0,
+    gulps: ratingData?.gulps ?? 0,
+    canViewRecentGames: canView,
   });
 });

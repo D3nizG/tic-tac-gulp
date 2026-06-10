@@ -10,13 +10,14 @@ import { invitesRouter } from './routes/invites.js';
 import { registerSocketHandlers } from './socket/handlers.js';
 import { getRedis, getRedisSubscriber } from './lib/redis.js';
 import { roomStore } from './store/roomStore.js';
+import type { PlayerId } from '@tic-tac-gulp/shared';
 
 // Supports a comma-separated list of origins, e.g.:
 // FRONTEND_ORIGIN=https://tic-tac-gulp.d3nizg.dev,http://localhost:3000
 const rawOrigin = process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000';
 const ALLOWED_ORIGINS = rawOrigin.split(',').map((o) => o.trim());
 
-export function createServer(options: { forfeitTimeoutMs?: number } = {}) {
+export function createServer(options: { forfeitTimeoutMs?: number; startingPlayer?: PlayerId } = {}) {
   const app = express();
   const httpServer = createHttpServer(app);
 
@@ -48,7 +49,10 @@ export function createServer(options: { forfeitTimeoutMs?: number } = {}) {
   app.use('/api/invites', invitesRouter);
 
   // WebSocket handlers
-  registerSocketHandlers(io, { forfeitTimeoutMs: options.forfeitTimeoutMs });
+  registerSocketHandlers(io, {
+    forfeitTimeoutMs: options.forfeitTimeoutMs,
+    startingPlayer: options.startingPlayer,
+  });
 
   // Restore persisted rooms from Redis (runs async after server setup)
   roomStore.initFromRedis().catch((err) => {

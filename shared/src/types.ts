@@ -50,12 +50,18 @@ export interface GameState {
   status: GameStatus;
   board: Board;
   players: { P1: Player; P2: Player };
+  /** Player who took the first turn in this game. Rematches alternate this. */
+  startingPlayer: PlayerId;
   currentTurn: PlayerId;
   moveCount: number;
   winner: PlayerId | 'DRAW' | null;
   /** Cells that form the winning line, e.g. [[0,0],[1,1],[2,2]] */
   winLine: [number, number][] | null;
   endReason: 'normal' | 'forfeit' | 'resign' | null;
+  /** Total gulps made by each player in this game. */
+  gulpCounts: Record<PlayerId, number>;
+  /** Signed-in disconnect grace; the player forfeits after this move count if still gone. */
+  disconnectGrace?: { playerId: PlayerId; expiresAtMove: number };
   createdAt: number;       // epoch ms
   updatedAt: number;       // epoch ms
   gameStartedAt: number | null;  // epoch ms — set when status transitions to IN_PROGRESS

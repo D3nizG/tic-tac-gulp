@@ -1,5 +1,6 @@
 import type { GameState, Inventory, Player } from './types.js';
 import { createEmptyBoard } from './boardEngine.js';
+import { nextTurn } from './turnManager.js';
 
 const FULL_INVENTORY: Inventory = { small: 3, medium: 3, large: 3 };
 
@@ -46,11 +47,13 @@ export function createInitialState(
       P1: makePlayer('P1', p1Name, p1SessionId, p1UserId),
       P2: makePlayer('P2', '', ''),
     },
+    startingPlayer: 'P1',
     currentTurn: 'P1',
     moveCount: 0,
     winner: null,
     winLine: null,
     endReason: null,
+    gulpCounts: { P1: 0, P2: 0 },
     createdAt: now,
     updatedAt: now,
     gameStartedAt: null,
@@ -83,11 +86,17 @@ export function addSecondPlayer(
  * Transitions a LOBBY state to IN_PROGRESS.
  * Returns a new state object.
  */
-export function startGame(state: GameState): GameState {
+function randomPlayer(): 'P1' | 'P2' {
+  return Math.random() < 0.5 ? 'P1' : 'P2';
+}
+
+export function startGame(state: GameState, startingPlayer: 'P1' | 'P2' = randomPlayer()): GameState {
   const now = Date.now();
   return {
     ...state,
     status: 'IN_PROGRESS',
+    startingPlayer,
+    currentTurn: startingPlayer,
     gameStartedAt: now,
     turnStartedAt: now,
     updatedAt: now,
@@ -96,10 +105,11 @@ export function startGame(state: GameState): GameState {
 
 /**
  * Resets an ENDED game back to IN_PROGRESS for a rematch.
- * Same players, same sides; P1 goes first again.
+ * Same players, same sides; first turn alternates from the previous game.
  */
 export function resetGameState(existing: GameState): GameState {
   const now = Date.now();
+  const startingPlayer = nextTurn(existing.startingPlayer ?? 'P1');
   return {
     ...existing,
     status: 'IN_PROGRESS',
@@ -114,11 +124,14 @@ export function resetGameState(existing: GameState): GameState {
         inventory: { ...FULL_INVENTORY },
       },
     },
-    currentTurn: 'P1',
+    startingPlayer,
+    currentTurn: startingPlayer,
     moveCount: 0,
     winner: null,
     winLine: null,
     endReason: null,
+    gulpCounts: { P1: 0, P2: 0 },
+    disconnectGrace: undefined,
     gameStartedAt: now,
     turnStartedAt: now,
     updatedAt: now,

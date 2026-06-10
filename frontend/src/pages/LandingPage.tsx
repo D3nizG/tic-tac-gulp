@@ -5,6 +5,9 @@ import { useGameStore } from '../stores/gameStore.js';
 import { getSocket } from '../stores/socketStore.js';
 import { useAuthStore } from '../stores/authStore.js';
 import { supabaseEnabled } from '../lib/supabase.js';
+import { useFriendsStore } from '../stores/friendsStore.js';
+import FriendsPanel from '../components/FriendsPanel.js';
+import HowToPlayOverlay from '../components/HowToPlayOverlay.js';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? '';
 
@@ -12,6 +15,12 @@ function authHeaders(token: string | null): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
+}
+
+interface LobbyProfile {
+  id: string;
+  username: string;
+  avatar_url: string | null;
 }
 
 export default function LandingPage() {
@@ -25,29 +34,61 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false);
 
   const { user, signInWithGoogle, signOut, getToken } = useAuthStore();
+  const { pendingIn, fetchRequests, sendGameInvite } = useFriendsStore();
   const [usernamePrompt, setUsernamePrompt] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [usernameLoading, setUsernameLoading] = useState(false);
-  const [profile, setProfile] = useState<{ username: string } | null>(null);
+  const [profile, setProfile] = useState<LobbyProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
-  // When user signs in, check if they have a profile; if not, prompt for username
+  // When user signs in, check if they have a profile; if not, prompt for username.
+  // Auth failures should not block the guest display-name flow.
   useEffect(() => {
-    if (!user) { setProfile(null); return; }
+    if (!user) {
+      setProfile(null);
+      setProfileLoading(false);
+      setUsernamePrompt(false);
+      return;
+    }
     const token = getToken();
-    fetch(`${SOCKET_URL}/api/users/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
+    if (!token) {
+      setProfile(null);
+      setProfileLoading(false);
+      setUsernamePrompt(false);
+      return;
+    }
+    setProfileLoading(true);
+    fetch(`${SOCKET_URL}/api/users/me`, { headers: authHeaders(token) })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        return { ok: r.ok, status: r.status, data };
+      })
       .then((data) => {
-        if (data.username) {
-          setProfile(data);
+        if (data.ok && data.data.username) {
+          setProfile(data.data);
           // Pre-fill display name with their username
-          setDisplayName(data.username);
-        } else {
+          setDisplayName(data.data.username);
+          setUsernamePrompt(false);
+        } else if (data.status === 404 && data.data.code === 'PROFILE_NOT_FOUND') {
+          setProfile(null);
           setUsernamePrompt(true);
+        } else {
+          setProfile(null);
+          setUsernamePrompt(false);
+          setError('Signed in, but the game API rejected the session.');
         }
       })
-      .catch(() => setUsernamePrompt(true));
+      .catch(() => setUsernamePrompt(false))
+      .finally(() => setProfileLoading(false));
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchRequests();
+  }, [user, fetchRequests]);
 
   async function handleSetUsername() {
     const trimmed = usernameInput.trim();
@@ -55,6 +96,11 @@ export default function LandingPage() {
     setUsernameLoading(true);
     setUsernameError('');
     const token = getToken();
+    if (!token) {
+      setUsernameError('Sign in again to save a profile username.');
+      setUsernameLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`${SOCKET_URL}/api/users/me`, {
         method: 'PUT',
@@ -63,6 +109,12 @@ export default function LandingPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) {
+          setDisplayName(trimmed.slice(0, 16));
+          setUsernamePrompt(false);
+          setError('Profile sign-in is unavailable. You can still play as a guest.');
+          return;
+        }
         setUsernameError(data.error ?? 'Failed to save username.');
         return;
       }
@@ -76,36 +128,44 @@ export default function LandingPage() {
     }
   }
 
-  const nameValid = displayName.trim().length >= 3 && displayName.trim().length <= 16;
+  const effectiveDisplayName = user ? profile?.username ?? '' : displayName.trim();
+  const nameValid = user
+    ? Boolean(profile?.username && !profileLoading)
+    : displayName.trim().length >= 3 && displayName.trim().length <= 16;
+
+  function joinRoomSocket(roomCode: string, playerId: 'P1' | 'P2', sessionId: string, displayNameForGame: string) {
+    setSession(playerId, roomCode, sessionId);
+    localStorage.setItem('ttg_sessionId', sessionId);
+    localStorage.setItem('ttg_roomCode', roomCode);
+
+    const socket = getSocket();
+    const payload = { sessionId, roomCode, displayName: displayNameForGame, playerId };
+    if (socket.connected) {
+      socket.emit('room:join', payload);
+    } else {
+      socket.connect();
+      socket.once('connect', () => {
+        socket.emit('room:join', payload);
+      });
+    }
+  }
 
   async function handleCreate() {
     if (!nameValid) return;
     setLoading(true);
     setError('');
     const token = getToken();
+    const displayNameForGame = effectiveDisplayName;
     try {
       const res = await fetch(`${SOCKET_URL}/api/rooms`, {
         method: 'POST',
         headers: authHeaders(token),
-        body: JSON.stringify({ displayName: displayName.trim() }),
+        body: JSON.stringify({ displayName: displayNameForGame }),
       });
       if (!res.ok) throw new Error('Failed to create room.');
       const { roomCode, playerId, sessionId } = await res.json();
 
-      setSession(playerId, roomCode, sessionId);
-      localStorage.setItem('ttg_sessionId', sessionId);
-      localStorage.setItem('ttg_roomCode', roomCode);
-
-      const socket = getSocket();
-      if (socket.connected) {
-        socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
-      } else {
-        socket.connect();
-        socket.once('connect', () => {
-          socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
-        });
-      }
-
+      joinRoomSocket(roomCode, playerId, sessionId, displayNameForGame);
       navigate(`/room/${roomCode}`);
     } catch (e) {
       setError(String(e));
@@ -120,11 +180,12 @@ export default function LandingPage() {
     setError('');
     const code = joinCode.trim().toUpperCase();
     const token = getToken();
+    const displayNameForGame = effectiveDisplayName;
     try {
       const res = await fetch(`${SOCKET_URL}/api/rooms/${code}/join`, {
         method: 'POST',
         headers: authHeaders(token),
-        body: JSON.stringify({ displayName: displayName.trim() }),
+        body: JSON.stringify({ displayName: displayNameForGame }),
       });
       if (!res.ok) {
         const { error: msg } = await res.json();
@@ -132,23 +193,37 @@ export default function LandingPage() {
       }
       const { roomCode, playerId, sessionId } = await res.json();
 
-      setSession(playerId, roomCode, sessionId);
-      localStorage.setItem('ttg_sessionId', sessionId);
-      localStorage.setItem('ttg_roomCode', roomCode);
-
-      const socket = getSocket();
-      if (socket.connected) {
-        socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
-      } else {
-        socket.connect();
-        socket.once('connect', () => {
-          socket.emit('room:join', { sessionId, roomCode, displayName: displayName.trim(), playerId });
-        });
-      }
-
+      joinRoomSocket(roomCode, playerId, sessionId, displayNameForGame);
       navigate(`/room/${roomCode}`);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleChallenge(username: string): Promise<{ error: string | null }> {
+    if (!profile?.username) return { error: 'Set a username first.' };
+    setLoading(true);
+    setError('');
+    const token = getToken();
+    try {
+      const res = await fetch(`${SOCKET_URL}/api/rooms`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ displayName: profile.username }),
+      });
+      const roomData = await res.json();
+      if (!res.ok) return { error: roomData.error ?? 'Failed to create room.' };
+
+      const invite = await sendGameInvite(username, roomData.roomCode);
+      if (invite.error) return invite;
+
+      joinRoomSocket(roomData.roomCode, roomData.playerId, roomData.sessionId, profile.username);
+      navigate(`/room/${roomData.roomCode}`);
+      return { error: null };
+    } catch {
+      return { error: 'Failed to challenge friend.' };
     } finally {
       setLoading(false);
     }
@@ -221,6 +296,19 @@ export default function LandingPage() {
       )}
     </AnimatePresence>
 
+    <AnimatePresence>
+      {showFriends && (
+        <FriendsPanel
+          onClose={() => setShowFriends(false)}
+          onChallenge={handleChallenge}
+        />
+      )}
+    </AnimatePresence>
+
+    <AnimatePresence>
+      {showHowToPlay && <HowToPlayOverlay onClose={() => setShowHowToPlay(false)} />}
+    </AnimatePresence>
+
     <main style={{
       display: 'flex',
       flexDirection: 'column',
@@ -255,6 +343,134 @@ export default function LandingPage() {
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
       }} />
+
+      {supabaseEnabled && (
+        <div style={{
+          position: 'fixed',
+          top: '1rem',
+          right: '1rem',
+          zIndex: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '0.625rem',
+        }}>
+          {user ? (
+            <>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.625rem',
+                padding: '0.45rem 0.5rem 0.45rem 0.45rem',
+                borderRadius: '999px',
+                background: 'rgba(20,28,51,0.86)',
+                border: '1px solid rgba(255,255,255,0.09)',
+                boxShadow: '0 18px 36px rgba(0,0,0,0.25)',
+                backdropFilter: 'blur(12px)',
+              }}>
+                <Link
+                  to={profile?.username ? `/profile/${profile.username}` : '#'}
+                  onClick={(e) => {
+                    if (!profile?.username) {
+                      e.preventDefault();
+                      setUsernamePrompt(true);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.625rem',
+                    color: 'var(--text)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <InitialAvatar name={profile?.username ?? 'Player'} size={32} />
+                  <span style={{
+                    maxWidth: '9rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '0.84rem',
+                    fontWeight: 800,
+                  }}>
+                    {profile?.username ?? (profileLoading ? 'Loading…' : 'Set username')}
+                  </span>
+                </Link>
+                <button
+                  onClick={signOut}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '999px',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.7rem',
+                    padding: '0.25rem 0.55rem',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-body)',
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+              <button
+                onClick={() => setShowFriends(true)}
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.55rem 0.85rem',
+                  borderRadius: '999px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(20,28,51,0.78)',
+                  color: 'var(--text)',
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  fontFamily: 'var(--font-display)',
+                  cursor: 'pointer',
+                  boxShadow: '0 18px 36px rgba(0,0,0,0.24)',
+                }}
+              >
+                Friends
+                {pendingIn.length > 0 && (
+                  <span style={{
+                    minWidth: 17,
+                    height: 17,
+                    borderRadius: '999px',
+                    background: 'var(--p2-primary)',
+                    color: '#fff',
+                    fontSize: '0.65rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingInline: '0.25rem',
+                  }}>
+                    {pendingIn.length}
+                  </span>
+                )}
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/login"
+              style={{
+                padding: '0.55rem 0.95rem',
+                borderRadius: '999px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(20,28,51,0.78)',
+                color: 'var(--text)',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                fontFamily: 'var(--font-display)',
+                textDecoration: 'none',
+              }}
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3rem', zIndex: 1, width: '100%', maxWidth: '26rem' }}>
@@ -311,17 +527,33 @@ export default function LandingPage() {
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Name input */}
-            <input
-              type="text"
-              placeholder="Your display name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              maxLength={16}
-              style={inputStyle}
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--p1-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.15)'; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
-            />
+            {!user && (
+              <input
+                type="text"
+                placeholder="Your display name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={16}
+                style={inputStyle}
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--p1-primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.15)'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.boxShadow = 'none'; }}
+              />
+            )}
+            {user && !profile?.username && (
+              <button
+                onClick={() => setUsernamePrompt(true)}
+                style={{
+                  ...btnStyle,
+                  width: '100%',
+                  background: 'rgba(37,99,235,0.14)',
+                  border: '1px solid rgba(37,99,235,0.35)',
+                  color: '#bfdbfe',
+                  cursor: 'pointer',
+                }}
+              >
+                Finish Profile Setup
+              </button>
+            )}
 
             {/* Mode toggle / join input */}
             <AnimatePresence mode="wait">
@@ -485,59 +717,39 @@ export default function LandingPage() {
           Play Locally (2 players, same device)
         </motion.button>
 
-        {/* Auth — optional sign-in for career stats */}
-        {supabaseEnabled && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.22 }}
-            style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
-          >
-            {user ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                <div style={{
-                  width: '1.75rem', height: '1.75rem', borderRadius: '50%',
-                  background: 'var(--p1-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0,
-                }}>
-                  {(profile?.username ?? user.email ?? '?')[0].toUpperCase()}
-                </div>
-                <Link
-                  to={profile?.username ? `/profile/${profile.username}` : '/profile'}
-                  style={{ color: 'var(--text)', textDecoration: 'none', fontWeight: 600 }}
-                >
-                  {profile?.username ?? user.email}
-                </Link>
-                <button
-                  onClick={signOut}
-                  style={{
-                    background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.375rem',
-                    color: 'var(--text-muted)', fontSize: '0.75rem', padding: '0.25rem 0.6rem',
-                    cursor: 'pointer', fontFamily: 'var(--font-body)',
-                  }}
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : (
-              <Link
-                to="/login"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.5rem 1rem', borderRadius: '2rem',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'var(--text-muted)', fontSize: '0.8rem',
-                  fontFamily: 'var(--font-body)', textDecoration: 'none',
-                  transition: 'border-color 0.15s, color 0.15s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'var(--text)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-              >
-                Sign in to track career stats
-              </Link>
-            )}
-          </motion.div>
-        )}
+        <motion.button
+          onClick={() => setShowHowToPlay(true)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '2rem',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.03)',
+            color: 'var(--text-muted)',
+            fontSize: '0.8rem',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 600,
+            cursor: 'pointer',
+            letterSpacing: '0.03em',
+            marginTop: '-2.25rem',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+            e.currentTarget.style.color = 'var(--text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
+        >
+          ?
+          How to Play
+        </motion.button>
 
         {/* Rules */}
         <div
@@ -582,6 +794,28 @@ function Spinner() {
         display: 'inline-block',
       }}
     />
+  );
+}
+
+function InitialAvatar({ name, size }: { name: string; size: number }) {
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius: '50%',
+      background: 'var(--p1-primary)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#fff',
+      fontFamily: 'var(--font-display)',
+      fontWeight: 800,
+      fontSize: size * 0.4,
+      flexShrink: 0,
+      boxShadow: '0 0 16px rgba(37,99,235,0.35)',
+    }}>
+      {(name?.[0] ?? '?').toUpperCase()}
+    </div>
   );
 }
 

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseServerKey } from '../db/supabase.js';
 
 /**
  * Verifies Supabase JWT from Authorization header.
@@ -20,11 +21,22 @@ declare global {
 }
 
 let _verifier: ReturnType<typeof createClient> | null = null;
+let warnedMissingVerifierConfig = false;
 
 function getVerifier() {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+  const key = getSupabaseServerKey();
+  if (!url || !key) {
+    if (!warnedMissingVerifierConfig) {
+      const missing = [
+        !url ? 'SUPABASE_URL' : null,
+        !key ? 'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEY' : null,
+      ].filter(Boolean).join(', ');
+      console.warn(`[auth] Supabase verifier is not configured. Missing: ${missing}`);
+      warnedMissingVerifierConfig = true;
+    }
+    return null;
+  }
   if (!_verifier) {
     _verifier = createClient(url, key, { auth: { persistSession: false } });
   }
@@ -34,11 +46,15 @@ function getVerifier() {
 async function extractUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return null;
-  const token = authHeader.slice(7);
+  const token = authHeader.slice(7).trim();
+  if (!token || token === 'null' || token === 'undefined') return null;
   const supabase = getVerifier();
   if (!supabase) return null;
   const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user) return null;
+  if (error || !data.user) {
+    console.warn(`[auth] Supabase token verification failed: ${error?.message ?? 'no user returned'}`);
+    return null;
+  }
   return data.user.id;
 }
 

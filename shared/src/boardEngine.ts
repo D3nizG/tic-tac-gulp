@@ -31,6 +31,7 @@ export function applyMove(state: GameState, move: MoveEvent): GameState {
       stack: [...cell.stack],
     }))
   );
+  const isGulp = newBoard[row][col].stack.length > 0;
 
   // Place the piece
   const piece: Piece = { owner: playerId, size: pieceSize };
@@ -57,6 +58,10 @@ export function applyMove(state: GameState, move: MoveEvent): GameState {
     ...state,
     board: newBoard,
     players: newPlayers,
+    gulpCounts: {
+      ...(state.gulpCounts ?? { P1: 0, P2: 0 }),
+      [playerId]: (state.gulpCounts?.[playerId] ?? 0) + (isGulp ? 1 : 0),
+    },
     moveCount: state.moveCount + 1,
     updatedAt: Date.now(),
   };

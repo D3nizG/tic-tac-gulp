@@ -45,7 +45,7 @@ export const useLocalStore = create<LocalStore>((set, get) => ({
     const s0 = createInitialState('LOCAL', p1Name, 'local-p1');
     const s1 = addSecondPlayer(s0, p2Name, 'local-p2');
     const s2 = startGame(s1);
-    set({ gameState: s2, viewSide: 'P1', passMode: false });
+    set({ gameState: s2, viewSide: s2.currentTurn, passMode: false });
     get().scheduleAutoMove();
   },
 
@@ -85,7 +85,7 @@ export const useLocalStore = create<LocalStore>((set, get) => ({
     if (!gameState) return;
     cancelAutoMove();
     const next = resetGameState(gameState);
-    set({ gameState: next, viewSide: 'P1', passMode: false, selectedPieceSize: null, lastPlacedMoveCount: null });
+    set({ gameState: next, viewSide: next.currentTurn, passMode: false, selectedPieceSize: null, lastPlacedMoveCount: null });
     get().scheduleAutoMove();
   },
 

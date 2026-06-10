@@ -6,10 +6,11 @@ import { useAuthStore } from '../stores/authStore.js';
 
 interface Props {
   roomCode?: string;
+  onChallenge?: (username: string) => Promise<{ error: string | null }>;
   onClose: () => void;
 }
 
-export default function FriendsPanel({ roomCode, onClose }: Props) {
+export default function FriendsPanel({ roomCode, onChallenge, onClose }: Props) {
   const user = useAuthStore((s) => s.user);
   const {
     friends, pendingIn, invites,
@@ -23,6 +24,7 @@ export default function FriendsPanel({ roomCode, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
   const [requestStatus, setRequestStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
   const [inviteStatus, setInviteStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
+  const [challengeStatus, setChallengeStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,6 +52,13 @@ export default function FriendsPanel({ roomCode, onClose }: Props) {
     setInviteStatus((s) => ({ ...s, [username]: 'sending' }));
     const { error } = await sendGameInvite(username, roomCode);
     setInviteStatus((s) => ({ ...s, [username]: error ? 'error' : 'sent' }));
+  }
+
+  async function handleChallenge(username: string) {
+    if (!onChallenge) return;
+    setChallengeStatus((s) => ({ ...s, [username]: 'sending' }));
+    const { error } = await onChallenge(username);
+    setChallengeStatus((s) => ({ ...s, [username]: error ? 'error' : 'sent' }));
   }
 
   if (!user) {
@@ -268,7 +277,9 @@ export default function FriendsPanel({ roomCode, onClose }: Props) {
                     friend={f}
                     roomCode={roomCode}
                     inviteStatus={inviteStatus[f.username ?? f.userId]}
+                    challengeStatus={challengeStatus[f.username ?? f.userId]}
                     onInvite={() => f.username && handleInvite(f.username)}
+                    onChallenge={() => f.username && handleChallenge(f.username)}
                     onRemove={() => {
                       if (confirmRemove === f.friendshipId) {
                         removeOrCancel(f.friendshipId);
@@ -408,7 +419,9 @@ function FriendCard({
   friend,
   roomCode,
   inviteStatus,
+  challengeStatus,
   onInvite,
+  onChallenge,
   onRemove,
   confirmingRemove,
   onCancelRemove,
@@ -416,7 +429,9 @@ function FriendCard({
   friend: import('../stores/friendsStore.js').Friend;
   roomCode?: string;
   inviteStatus?: 'sending' | 'sent' | 'error';
+  challengeStatus?: 'sending' | 'sent' | 'error';
   onInvite: () => void;
+  onChallenge: () => void;
   onRemove: () => void;
   confirmingRemove: boolean;
   onCancelRemove: () => void;
@@ -451,8 +466,7 @@ function FriendCard({
       </div>
 
       <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0, alignItems: 'center' }}>
-        {/* Invite button — only shows when in a room */}
-        {roomCode && (
+        {roomCode ? (
           inviteStatus === 'sent' ? (
             <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>Invited ✓</span>
           ) : (
@@ -470,6 +484,26 @@ function FriendCard({
               }}
             >
               {inviteStatus === 'sending' ? '…' : 'Invite'}
+            </button>
+          )
+        ) : (
+          challengeStatus === 'sent' ? (
+            <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>Challenged ✓</span>
+          ) : (
+            <button
+              onClick={onChallenge}
+              disabled={challengeStatus === 'sending'}
+              title="Challenge friend"
+              style={{
+                padding: '0.35rem 0.625rem',
+                borderRadius: '0.375rem',
+                border: '1px solid rgba(234,88,12,0.4)',
+                background: 'rgba(234,88,12,0.12)',
+                color: '#fdba74', fontSize: '0.75rem', fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'var(--font-display)',
+              }}
+            >
+              {challengeStatus === 'sending' ? '…' : challengeStatus === 'error' ? 'Retry' : 'Challenge'}
             </button>
           )
         )}

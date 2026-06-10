@@ -24,8 +24,13 @@ export default function ConnectionBanner() {
     bgColor = '#7c3aed';
   } else if (isOpponentDisconnected && gameState) {
     const name = gameState.players[disconnectedPlayer!].displayName;
+    const remainingTurns = gameState.disconnectGrace?.playerId === disconnectedPlayer
+      ? Math.max(0, gameState.disconnectGrace.expiresAtMove - gameState.moveCount)
+      : null;
     message = `${name} disconnected`;
-    subMessage = 'They have 60 seconds to reconnect or forfeit';
+    subMessage = remainingTurns === null
+      ? 'Waiting for them to reconnect'
+      : `They have ${remainingTurns} turn${remainingTurns === 1 ? '' : 's'} to reconnect`;
     bgColor = '#b45309';
   }
 
